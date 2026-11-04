@@ -11,7 +11,7 @@ Pascal-подмножество → лексер/парсер → типизир
 
 ## Статус
 
-Версия **1.3.0**: default **compute-vulkan1.0**, optional **compute-vulkan1.2**.
+Версия **1.3.1**: default **compute-vulkan1.0**, optional **compute-vulkan1.2**.
 Компилятор напрямую записывает бинарный
 SPIR-V: он не переводит исходник в GLSL и не вызывает сторонний компилятор.
 
@@ -38,6 +38,7 @@ SPIR-V: он не переводит исходник в GLSL и не вызыв
 - доступ к ресурсам/built-ins из root helpers и read-only constant array tables;
 - `Min`, `Max`, `Abs`, `Clamp`, `Dot`, `Sqrt`;
 - bitcasts, Round/Trunc/Floor/Ceil/RoundEven, IsNan/IsInfinite, Ldexp, FindMSB/LSB;
+- модуль `lib/SoftDouble.pasm`: деление Double с правильным округлением, побитово как x86-64 SSE2;
 - диагностика с номером строки/столбца и проверка инициализации переменных;
 - проверенный `std430` layout, JSON v2 и генерация Delphi-unit с явным padding;
 - declaration-модули `.pasm`, `uses`, текстовые `{$I}`/`{$INCLUDE}` и карта исходных строк;
@@ -314,6 +315,7 @@ CPU в 1 поток / все ядра, area-фильтр на Vulkan и штат
 
 - [Поддерживаемый язык и числовые правила](docs/language.md)
 - [Расширения 1.1 и optional Vulkan 1.2](docs/extended.md)
+- [SoftDouble: точное деление Double](docs/softdouble.md)
 - [Аудит расширений и исправления 1.1.1](docs/audit-1.1.1.md)
 - [Повторный аудит и исправления 1.1.2](docs/audit-1.1.2.md)
 - [Архитектура и следующие этапы](docs/architecture.md)

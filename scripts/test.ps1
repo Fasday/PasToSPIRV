@@ -325,6 +325,7 @@ foreach ($case in $featureFailures) { Test-Failure $case[0] $case[1] $case[2] }
 . (Join-Path $root 'tests\audit112.ps1')
 . (Join-Path $root 'tests\syntax12.ps1')
 . (Join-Path $root 'tests\syntax13.ps1')
+. (Join-Path $root 'tests\softdouble.ps1')
 Test-Failure 'nul' ("procedure Main; begin end;" + [char]0) 'NUL'
 $fields = (1..33 | ForEach-Object { "N$($_): Cardinal;" }) -join ' '
 Test-Failure 'large_push' "var [PushConstant] P: record $fields end; procedure Main; begin end;" '128 bytes'

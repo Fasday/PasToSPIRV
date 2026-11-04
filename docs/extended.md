@@ -80,8 +80,9 @@ NaN, infinity и выход за диапазон дают `Low(Int64)` / `Low(I
 
 Это **не обещание** побитовой точности всех float operations. Native GPU Double
 division, sqrt/ldexp, NaN payloads и другие операции проверяются для конкретного
-алгоритма/устройства. Для точного деления при необходимости можно реализовать
-software arithmetic через UInt64 и bitcasts. Compiler не подменяет Double на Single
+алгоритма/устройства. Для деления с правильным округлением есть модуль
+`lib/SoftDouble.pasm` (целочисленная арифметика UInt64 и bitcasts), см.
+[softdouble.md](softdouble.md). Compiler не подменяет Double на Single
 и не вызывает внешние библиотеки/компиляторы.
 
 ## Процедуры, ссылки и ресурсы

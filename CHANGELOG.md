@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 — SoftDouble library
+
+- `lib/SoftDouble.pasm`: correctly rounded binary64 division (`SoftDiv`, `SoftDivBits`) in
+  integer arithmetic, bit-identical to x86-64 SSE2 DIVSD with the default MXCSR (nearest
+  even, subnormals, x86 NaN rules). The compiler is unchanged.
+- `tests/softdouble_gpu.py` compares GPU results with Delphi Win64 division
+  (`tests/SoftDoubleCheck.dpr`) and a Fraction oracle; `tests/softdouble.ps1` checks
+  compilation, profile and reflection. See docs/softdouble.md.
+
 ## 1.3.0 — Delphi syntax, group 2
 
 - Enumerations `(A, B = 5, C)` with `TEnum.Value`, comparisons, Ord/Succ/Pred/Low/High,
