@@ -86,6 +86,7 @@ python .\tests\vulkan_smoke.py --require-shared-cpu
 python .\tests\vulkan_extended.py
 python .\tests\audit_typed_trees.py --count 300 --depth 6 --rounds 2
 python .\tests\audit_flow_runtime.py --programs 40
+python .\tests\audit_syntax_runtime.py --programs 40
 python .\tests\audit_numeric_gpu.py --count 256
 python .\tests\softdouble_gpu.py
 ```

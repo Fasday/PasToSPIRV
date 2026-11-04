@@ -95,6 +95,21 @@ $syntax13Failures = @(
 )
 foreach ($n in $syntax13Failures) { Test-Failure $n[0] $n[1] $n[2] }
 
+# Audit 1.3.2: depth budgets end in source errors, not stack overflows.
+$deepNesting = 'procedure Main; var A: Integer; ' + (-join (0..32 | ForEach-Object { "procedure P$_; " })) +
+    'begin A := A + 1; end; ' + (-join (32..1 | ForEach-Object { "begin P$_; end; " })) + 'begin A := 0; P0; end;'
+Test-Failure 's13_nested_depth' $deepNesting 'limited to 32 levels'
+Test-Failure 's13_if_chain_depth' ('procedure Main; var I: Integer; begin I := ' +
+    ('if GlobalInvocationID.X = 0 then 1 else ' * 20000) + '2; end;') 'nesting limit'
+Test-Failure 's13_if_chain_const_depth' ('const K = ' + ('if True then 1 else ' * 20000) + '2; procedure Main; begin end;') 'nesting limit'
+# References to captured (Private) variables: field, element, component and swizzle access.
+$capturedRef = 'type R = record X, Y: Integer; end; A4 = array[0..3] of Integer; var [Binding(0,0)] D: array of Integer; ' +
+    'procedure SetX(var P: R); begin P.X := 5; end; procedure SetI(var P: A4; I: Integer); begin P[I] := 7; end; ' +
+    'procedure Bump(var V: Integer4); begin Inc(V.Z, 3); V.XY := V.YX; end; function GetY(var P: R): Integer; begin Result := P.Y; end; ' +
+    '[Vulkan12] procedure Main; var Q: R; Arr: A4; V: Integer4; procedure Inner; begin SetX(Q); SetI(Arr, 2); Bump(V); end; ' +
+    'begin Q := Default(R); Arr := Default(A4); V := Integer4(0); Inner; D[0] := Q.X + Arr[2] + V.Z + GetY(Q); end;'
+Test-Extended 's13_captured_references' $capturedRef 'OpVariable %\w+ Private'
+
 # The OpSelect path never evaluates impure branches: a buffer read stays behind a branch.
 Test-Success 's13_if_lazy' 'var [Binding(0,0)] D: array of Integer; procedure Main; var I: Integer; begin I := if GlobalInvocationID.X < 4 then D[GlobalInvocationID.X] else 0; end;' 'OpPhi'
 $lazyAsm = Invoke-Tool $SpirvDis @((Join-Path $cases 's13_if_lazy.spv'))

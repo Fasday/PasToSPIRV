@@ -164,6 +164,7 @@ uses
 const
   MaxResources = 4096;
   MaxFunctionVariables = 4096;
+  MaxRoutineNesting = 32;
 // Constant evaluation is shared with the conservative optional optimizer.
 
 
@@ -1331,6 +1332,18 @@ begin
   end;
   SavedFunction := FCurrentFunction;
   SavedSymbols := nil; SavedConstants := nil; SavedFunctions := nil;
+  if ANested then
+  begin
+    I := 1;
+    Global := SavedFunction;
+    while Global.Outer <> nil do
+    begin
+      Inc(I);
+      Global := Global.Outer;
+    end;
+    if I > MaxRoutineNesting then
+      raise EShaderError.Create(Name.Position, Format('Nested routines are limited to %d levels', [MaxRoutineNesting]));
+  end;
   if ANested then
   begin
     SavedSymbols := TDictionary<string, TShaderVariable>.Create(FLocalSymbols);
@@ -2624,6 +2637,8 @@ var
   Condition: TExpression;
 begin
   Position := FToken.Position;
+  // else-if chains recurse here without passing through ParseUnary.
+  EnterDepth;
   ExpectWord('if');
   Result := TExpression.Create;
   Result.Kind := ekConditional;
@@ -2660,7 +2675,9 @@ begin
     Result.Depth := Max(Max(Result.Left.Depth, Result.Right.Depth), Condition.Depth) + 1;
     if Result.Depth > 128 then
       raise EShaderError.Create(Position, 'Expression nesting limit exceeded');
+    LeaveDepth;
   except
+    LeaveDepth;
     Result.Free;
     raise;
   end;

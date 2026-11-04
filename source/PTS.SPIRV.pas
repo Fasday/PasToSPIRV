@@ -349,7 +349,13 @@ begin
 end;
 
 function TSPIRVWriter.StorageClass(AExpression: TExpression): Cardinal;
+var
+  Binding: TReferenceBinding;
 begin
+  // A var/out parameter points into its root: Function, or Private when the
+  // argument is a variable captured by a nested routine.
+  if (AExpression.Kind = ekLocal) and FReferences.TryGetValue(AExpression.Variable, Binding) then
+    Exit(Binding.Shape.RootStorage);
   case AExpression.Kind of
     ekLocal: if AExpression.Variable.Kind = vkShared then Result := 4
       else if (AExpression.Variable.Kind = vkConstant) or AExpression.Variable.Captured then Result := 6

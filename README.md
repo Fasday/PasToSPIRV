@@ -11,7 +11,7 @@ Pascal-подмножество → лексер/парсер → типизир
 
 ## Статус
 
-Версия **1.3.1**: default **compute-vulkan1.0**, optional **compute-vulkan1.2**.
+Версия **1.3.2**: default **compute-vulkan1.0**, optional **compute-vulkan1.2**.
 Компилятор напрямую записывает бинарный
 SPIR-V: он не переводит исходник в GLSL и не вызывает сторонний компилятор.
 
@@ -316,6 +316,7 @@ CPU в 1 поток / все ядра, area-фильтр на Vulkan и штат
 - [Поддерживаемый язык и числовые правила](docs/language.md)
 - [Расширения 1.1 и optional Vulkan 1.2](docs/extended.md)
 - [SoftDouble: точное деление Double](docs/softdouble.md)
+- [Аудит синтаксиса 1.2/1.3 и исправления 1.3.2](docs/audit-1.3.2.md)
 - [Аудит расширений и исправления 1.1.1](docs/audit-1.1.1.md)
 - [Повторный аудит и исправления 1.1.2](docs/audit-1.1.2.md)
 - [Архитектура и следующие этапы](docs/architecture.md)

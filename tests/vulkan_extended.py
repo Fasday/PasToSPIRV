@@ -147,11 +147,11 @@ def run_extended_tests(root: Path):
             assert struct.unpack('<64i', result['Output']) == (2, 4, 8, 16) * 16
             # Language 1.3: references to variables captured by nested routines, var overloads, forward.
             group2 = compile_shader(root, output, 'syntax_group2_refs', 'tests/fixtures', optimize=optimize)
-            result = runtime.run(group2, {'Output': bytes(64*4*4)}, b'', 1)
-            actual = struct.unpack('<256i', result['Output'])
+            result = runtime.run(group2, {'Output': bytes(64*6*4)}, b'', 1)
+            actual = struct.unpack('<384i', result['Output'])
             for i in range(64):
-                want = (170 + i, 26, 14, 100 if i & 3 == 3 else 0)
-                assert actual[i*4:(i+1)*4] == want, f'syntax_group2_refs O{int(optimize)} {i}: {actual[i*4:(i+1)*4]} != {want}'
+                want = (170 + i, 26, 14, 100 if i & 3 == 3 else 0, 150, 2139)
+                assert actual[i*6:(i+1)*6] == want, f'syntax_group2_refs O{int(optimize)} {i}: {actual[i*6:(i+1)*6]} != {want}'
         print(f'PASS: extended Vulkan 1.2, {runtime.dispatches} dispatches, Delphi numeric reference, '
               'true reference aliases, control flow, byte/word alias views, nested captures, O0/O1.')
 

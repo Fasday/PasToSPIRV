@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.3.2 — audit of the 1.2/1.3 syntax
 
+- Fix invalid SPIR-V (exit code 0) for field, element, component and swizzle access through
+  var/out parameters whose argument is a variable captured by a nested routine (Private root).
+- Source errors instead of stack overflows for deep `if … else if …` expression chains
+  (nesting limit 128) and nested routines (limit 32 levels).
+- New GPU audit `tests/audit_syntax_runtime.py`: random 1.2/1.3 programs against an
+  independent model. See docs/audit-1.3.2.md.
 - docs/modules.md: measured differences between Delphi Win64 and PasToSPIRV for
   shared CPU/GPU source (real literal types, EXCESSPRECISION, Byte promotion, Delphi
   literal rounding, Double literals) and the runtime conditions for bit-exact floats.

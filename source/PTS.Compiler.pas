@@ -9,7 +9,7 @@ uses
   PTS.Source;
 
 const
-  CompilerVersion = '1.3.1';
+  CompilerVersion = '1.3.2';
 
 type
   TCompilationResult = record

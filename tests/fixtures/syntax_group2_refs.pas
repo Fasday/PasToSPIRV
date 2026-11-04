@@ -3,6 +3,9 @@
 // parameters and a forward-declared procedure (tests/vulkan_extended.py).
 type
   TArr = array[0..3] of Integer;
+  TPair = record
+    A, B: Integer;
+  end;
 
 var
   [Binding(0,0),WriteOnly] Output: array of Integer;
@@ -21,6 +24,18 @@ end;
 
 procedure Bump(var V: Integer; N: Integer); forward;
 
+// Field and swizzle writes through references whose root may be Private (captured).
+procedure SetB(var P: TPair; V: Integer);
+begin
+  P.B := V;
+end;
+
+procedure SwapXY(var V: Integer4);
+begin
+  V.XY := V.YX;
+  Inc(V.W, 5);
+end;
+
 procedure Twice(var V: Integer);
 begin
   Bump(V, V);
@@ -37,11 +52,19 @@ var
   A, B, Base: Integer;
   F, G: Single;
   Arr: TArr;
+  Pr: TPair;
+  Vec: Integer4;
 
   procedure Mix;
   begin
     Swap(A, B);
     Bump(Arr[A and 3], 100);
+  end;
+
+  procedure Fix;
+  begin
+    SetB(Pr, A + 1);
+    SwapXY(Vec);
   end;
 
   function Total: Integer;
@@ -50,7 +73,7 @@ var
   end;
 
 begin
-  Base := Integer(GlobalInvocationID.X) * 4;
+  Base := Integer(GlobalInvocationID.X) * 6;
   A := Integer(GlobalInvocationID.X);
   B := 7;
   Arr := Default(TArr);
@@ -63,4 +86,9 @@ begin
   Twice(A);
   Output[Base + 2] := A;
   Output[Base + 3] := Arr[B and 3];
+  Pr := Default(TPair);
+  Vec := Integer4(1, 2, 3, 4);
+  Fix;
+  Output[Base + 4] := Pr.B * 10 + Pr.A;
+  Output[Base + 5] := Vec.X * 1000 + Vec.Y * 100 + Vec.Z * 10 + Vec.W;
 end;
