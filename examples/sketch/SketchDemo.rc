@@ -1,0 +1,3 @@
+// Windows manifest for the GUI demos: themed common controls and per-monitor DPI.
+// Compiled by build.ps1 (scripts\build.ps1 -Resources) into build\res\SketchDemo.res.
+1 24 "SketchDemo.manifest"

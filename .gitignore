@@ -1,0 +1,12 @@
+/build/
+/.codegraph/
+*.dcu
+*.identcache
+*.local
+*.dproj.local
+*.stat
+*.tvsconfig
+__history/
+__recovery/
+__pycache__/
+*.pyc

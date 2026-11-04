@@ -1,0 +1,299 @@
+object MainForm: TMainForm
+  Left = 0
+  Top = 0
+  Caption = 'PasToSPIRV '#8212' '#1082#1072#1088#1072#1085#1076#1072#1096#1085#1099#1081' '#1101#1089#1082#1080#1079' (FMX)'
+  ClientHeight = 760
+  ClientWidth = 1280
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  OnShow = FormShow
+  OnCloseQuery = FormCloseQuery
+  DesignerMasterStyle = 0
+  object TopBar: TToolBar
+    Size.Width = 1280.000000000000000000
+    Size.Height = 44.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object OpenButton: TButton
+      Align = Left
+      Margins.Left = 8.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 8.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 90.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      Text = #1054#1090#1082#1088#1099#1090#1100#8230
+      OnClick = OpenButtonClick
+    end
+    object TestButton: TButton
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 104.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 160.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+      Text = #1058#1077#1089#1090#1086#1074#1086#1077' '#1080#1079#1086#1073#1088#1072#1078#1077#1085#1080#1077
+      OnClick = TestButtonClick
+    end
+    object SizeCombo: TComboBox
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 270.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 110.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+    end
+    object RadiusLabel: TLabel
+      Align = Left
+      Margins.Left = 12.000000000000000000
+      Position.X = 392.000000000000000000
+      Size.Width = 72.000000000000000000
+      Size.Height = 44.000000000000000000
+      Size.PlatformDefault = False
+      Text = #1056#1072#1076#1080#1091#1089': 12'
+    end
+    object RadiusTrack: TTrackBar
+      Align = Left
+      CanParentFocus = True
+      Frequency = 1.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Max = 32.000000000000000000
+      Min = 1.000000000000000000
+      Orientation = Horizontal
+      Position.X = 464.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 150.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 3
+      Value = 12.000000000000000000
+      OnChange = RadiusTrackChange
+    end
+    object MethodCombo: TComboBox
+      Align = Left
+      Margins.Left = 10.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 624.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 250.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 4
+    end
+    object RunButton: TButton
+      Align = Left
+      Default = True
+      Margins.Left = 8.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 882.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 100.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 5
+      Text = #1055#1086#1089#1090#1088#1086#1080#1090#1100
+      OnClick = RunButtonClick
+    end
+    object BenchButton: TButton
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 988.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 100.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 6
+      Text = #1041#1077#1085#1095#1084#1072#1088#1082
+      OnClick = BenchButtonClick
+    end
+    object SaveButton: TButton
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 9.000000000000000000
+      Margins.Bottom = 9.000000000000000000
+      Position.X = 1094.000000000000000000
+      Position.Y = 9.000000000000000000
+      Size.Width = 100.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 7
+      Text = #1057#1086#1093#1088#1072#1085#1080#1090#1100#8230
+      OnClick = SaveButtonClick
+    end
+  end
+  object OptionsBar: TToolBar
+    Align = Top
+    Position.Y = 44.000000000000000000
+    Size.Width = 1280.000000000000000000
+    Size.Height = 40.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 4
+    object OperationCombo: TComboBox
+      Position.X = 8.000000000000000000
+      Position.Y = 7.000000000000000000
+      Size.Width = 256.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+    end
+    object ThumbnailLabel: TLabel
+      Position.X = 278.000000000000000000
+      Position.Y = 7.000000000000000000
+      Size.Width = 85.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Fit inside:'
+    end
+    object ThumbnailCombo: TComboBox
+      Position.X = 368.000000000000000000
+      Position.Y = 7.000000000000000000
+      Size.Width = 140.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+    end
+    object ThumbnailHint: TLabel
+      Position.X = 524.000000000000000000
+      Position.Y = 7.000000000000000000
+      Size.Width = 700.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Keep aspect ratio; no upscaling'
+    end
+  end
+  object ImagesLayout: TLayout
+    Align = Client
+    Size.Width = 1280.000000000000000000
+    Size.Height = 522.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 1
+    OnResized = ImagesLayoutResized
+    object SourceLayout: TLayout
+      Align = Left
+      Size.Width = 637.000000000000000000
+      Size.Height = 522.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      object SourceCaption: TLabel
+        Align = Top
+        Margins.Left = 6.000000000000000000
+        Margins.Right = 6.000000000000000000
+        Position.X = 6.000000000000000000
+        Size.Width = 625.000000000000000000
+        Size.Height = 24.000000000000000000
+        Size.PlatformDefault = False
+        Text = #1048#1089#1093#1086#1076#1085#1086#1077
+      end
+      object SourceImage: TImage
+        MultiResBitmap = <
+          item
+          end>
+        Align = Client
+        Size.Width = 637.000000000000000000
+        Size.Height = 498.000000000000000000
+        Size.PlatformDefault = False
+        WrapMode = Fit
+      end
+    end
+    object Splitter: TSplitter
+      Align = Left
+      Cursor = crHSplit
+      MinSize = 120.000000000000000000
+      Position.X = 637.000000000000000000
+      Size.Width = 6.000000000000000000
+      Size.Height = 522.000000000000000000
+      Size.PlatformDefault = False
+    end
+    object ResultLayout: TLayout
+      Align = Client
+      Size.Width = 637.000000000000000000
+      Size.Height = 522.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+      object ResultCaption: TLabel
+        Align = Top
+        Margins.Left = 6.000000000000000000
+        Margins.Right = 6.000000000000000000
+        Position.X = 6.000000000000000000
+        Size.Width = 625.000000000000000000
+        Size.Height = 24.000000000000000000
+        Size.PlatformDefault = False
+        Text = #1069#1089#1082#1080#1079
+      end
+      object ResultImage: TImage
+        MultiResBitmap = <
+          item
+          end>
+        Align = Client
+        Size.Width = 637.000000000000000000
+        Size.Height = 498.000000000000000000
+        Size.PlatformDefault = False
+        WrapMode = Fit
+      end
+    end
+  end
+  object LogMemo: TMemo
+    Touch.InteractiveGestures = [Pan, LongTap, DoubleTap]
+    DataDetectorTypes = []
+    ReadOnly = True
+    StyledSettings = [Size, Style, FontColor]
+    TextSettings.Font.Family = 'Consolas'
+    Align = Bottom
+    Position.Y = 566.000000000000000000
+    Size.Width = 1280.000000000000000000
+    Size.Height = 170.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 2
+    Viewport.Width = 1276.000000000000000000
+    Viewport.Height = 166.000000000000000000
+  end
+  object StatusBar: TStatusBar
+    Position.Y = 736.000000000000000000
+    ShowSizeGrip = True
+    Size.Width = 1280.000000000000000000
+    Size.Height = 24.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 3
+    object StatusLabel: TLabel
+      Align = Client
+      Margins.Left = 6.000000000000000000
+      Size.Width = 1274.000000000000000000
+      Size.Height = 24.000000000000000000
+      Size.PlatformDefault = False
+      Text = ''
+    end
+  end
+  object OpenDialog: TOpenDialog
+    Filter = #1048#1079#1086#1073#1088#1072#1078#1077#1085#1080#1103'|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|'#1042#1089#1077' '#1092#1072#1081#1083#1099'|*.*'
+    Options = [ofHideReadOnly, ofFileMustExist, ofEnableSizing]
+    Left = 40
+    Top = 80
+  end
+  object SaveDialog: TSaveDialog
+    DefaultExt = 'png'
+    Filter = 'PNG|*.png'
+    Options = [ofOverwritePrompt, ofHideReadOnly, ofEnableSizing]
+    Left = 120
+    Top = 80
+  end
+end

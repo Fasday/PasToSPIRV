@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "include_directories": ["modules"],
+  "optimize": true,
+  "entries": [
+    {"source": "modules_compute.pas", "output": "../build/example-project/modules.spv", "bindings": "../build/example-project/ModuleBindings.pas"},
+    {"source": "atomic_histogram.pas", "output": "../build/example-project/histogram.spv"},
+    {"source": "shared_reduce.pas", "output": "../build/example-project/reduce.spv"},
+    {"source": "storage_image.pas", "output": "../build/example-project/image.spv"},
+    {"source": "sample_texture.pas", "output": "../build/example-project/texture.spv"}
+  ]
+}
