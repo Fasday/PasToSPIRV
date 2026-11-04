@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- docs/modules.md: measured differences between Delphi Win64 and PasToSPIRV for
+  shared CPU/GPU source (real literal types, EXCESSPRECISION, Byte promotion, Delphi
+  literal rounding, Double literals) and the runtime conditions for bit-exact floats.
+
 ## 1.3.1 — SoftDouble library
 
 - `lib/SoftDouble.pasm`: correctly rounded binary64 division (`SoftDiv`, `SoftDivBits`) in
