@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0 — runtime component and Vulkan 1.1 (unreleased)
+
+- Nonvisual `TShaderCompilerComponent` and `CompileText` compile explicit in-memory
+  source/module/include snapshots without filesystem resolution or external tools.
+- `[Vulkan11]` emits SPIR-V 1.3 with native feature and device-extension requirements;
+  equivalent Vulkan11/Vulkan12 sources retain the same instruction stream.
+- Native ARM builds use portable arithmetic-exception types and restore the saved
+  rounding mode, exception mask and flags. The existing Win64 MXCSR path is unchanged.
+- Configurable external entry-point names are also available through the component.
+
+## 1.3.3 — configurable external entry-point name
+
+- `compile --entry-point <name>`, project entry `entry_point`, and the optional final
+  `AEntryPointName` parameter of Compile/CompileFile/CompileResolved select the external
+  SPIR-V name. The source procedure remains Main; the default name is unchanged (Main).
+- SPIR-V and reflection preserve the same case-sensitive name; project caches include it.
+  Names are validated ASCII identifiers of 1..127 characters before writing outputs.
+- Document `.pasm` entry files without a module header; imported libraries still use
+  `module Name;`. No language or resource-layout changes.
+
 ## 1.3.2 — audit of the 1.2/1.3 syntax
 
 - Fix invalid SPIR-V (exit code 0) for field, element, component and swizzle access through

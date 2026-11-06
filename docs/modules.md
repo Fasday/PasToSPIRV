@@ -7,6 +7,10 @@
 
 Это не полноценные Delphi units и не произвольный Pascal-препроцессор.
 
+Расширение `.pasm` допустимо и у корневого файла шейдера. Роль определяется
+заголовком: библиотека начинается с `module Name;`, корневой шейдер — без `module`
+и с `procedure Main`. По `uses Name` по-прежнему ищется только `Name.pasm`.
+
 ## Модули `.pasm`
 
 ```pascal
@@ -122,6 +126,20 @@ Result := TShaderCompiler.CompileFile(
 
 String API не разрешает файловые зависимости: `uses`/include требуют `CompileFile`.
 File API не записывает `.spv`/JSON/unit; запись выполняет CLI или вызывающее приложение.
+
+С 1.3.3 у `Compile`, `CompileFile`, `CompileResolved` есть последний необязательный
+параметр `AEntryPointName: string = 'Main'` — внешнее имя точки входа, например:
+
+```pascal
+Result := TShaderCompiler.Compile(Source, '', False, 'main');
+Result := TShaderCompiler.CompileFile(
+  ShaderFile, TArray<string>.Create(ModuleDirectory), '', True, 'main');
+```
+
+Процедура в исходнике остаётся `Main`. Имя проверяется как ASCII-идентификатор длиной
+1..127 символов; некорректный аргумент даёт `EArgumentException` (CLI code 2).
+Регистрозависимое значение одинаково в `OpEntryPoint` и reflection `entry_point`.
+Прежние вызовы API сохраняют имя `Main`.
 
 `EShaderError.Position.FileName`, `Line`, `Column` указывают на исходный физический
 файл, в том числе `.inc`, а не на номер строки в развёрнутой склейке.

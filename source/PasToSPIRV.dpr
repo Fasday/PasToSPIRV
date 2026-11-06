@@ -71,6 +71,7 @@ begin
   Writeln('Usage: pastospirv [compile] <input.pas> [-o <output.spv>]');
   Writeln('                 [--reflection <output.json>]');
   Writeln('                 [--bindings <UnitName.pas>]');
+  Writeln('                 [--entry-point <name>]');
   Writeln('                 [-I <include-directory>] ...');
   Writeln('                 [-O0|-O1]');
   Writeln('       pastospirv build <project.json> [--force]');
@@ -79,6 +80,8 @@ begin
   Writeln;
   Writeln('Default outputs: <input>.spv and <output>.json');
   Writeln('Default: SPIR-V 1.0 / Vulkan 1.0, compute entry point Main');
+  Writeln('--entry-point changes the external SPIR-V name; the source procedure is always Main');
+  Writeln('Shader entry files may use .pasm (no module header) or another extension');
   Writeln('Optional [Vulkan12] on Main: SPIR-V 1.3 / Vulkan 1.2; see docs/extended.md');
 end;
 
@@ -104,7 +107,7 @@ end;
 
 function Run: Integer;
 var
-  InputPath, OutputPath, ReflectionPath, BindingsPath, BindingsUnit, Argument, ErrorPath: string;
+  InputPath, OutputPath, ReflectionPath, BindingsPath, BindingsUnit, Argument, ErrorPath, EntryPointName: string;
   IncludeDirectories: TArray<string>;
   I: Integer;
   Compilation: TCompilationResult;
@@ -135,13 +138,30 @@ begin
   ReflectionPath := '';
   BindingsPath := '';
   BindingsUnit := '';
+  EntryPointName := '';
   I := 1;
   if SameText(Arg(I), 'compile') then
     Inc(I);
   while I <= ArgCount do
   begin
     Argument := Arg(I);
-    if (Argument = '-O0') or (Argument = '-O1') then Optimize := Argument = '-O1'
+    if (Argument = '-O0') or (Argument = '-O1') then
+      Optimize := Argument = '-O1'
+    else if Argument = '--entry-point' then
+    begin
+      if EntryPointName <> '' then
+      begin
+        Writeln(ErrOutput, 'error: duplicate --entry-point option');
+        Exit;
+      end;
+      Inc(I);
+      if (I > ArgCount) or (Arg(I) = '') or (Copy(Arg(I), 1, 1) = '-') then
+      begin
+        Writeln(ErrOutput, 'error: missing name after --entry-point');
+        Exit;
+      end;
+      EntryPointName := Arg(I);
+    end
     else if (Argument = '-o') or (Argument = '--reflection') or (Argument = '--bindings') or
       (Argument = '-I') or (Argument = '--include') then
     begin
@@ -199,6 +219,8 @@ begin
     end;
     Inc(I);
   end;
+  if EntryPointName = '' then
+    EntryPointName := 'Main';
   if InputPath = '' then
   begin
     Writeln(ErrOutput, 'error: input file is required');
@@ -206,6 +228,7 @@ begin
   end;
   try
     InputPath := TPath.GetFullPath(InputPath);
+    ValidateEntryPointName(EntryPointName);
     if OutputPath = '' then
       OutputPath := ChangeFileExt(InputPath, '.spv');
     OutputPath := TPath.GetFullPath(OutputPath);
@@ -239,7 +262,7 @@ begin
         if SameFileOrPath(SourceFile.FullPath,OutputPath) or SameFileOrPath(SourceFile.FullPath,ReflectionPath) or
           ((BindingsPath <> '') and SameFileOrPath(SourceFile.FullPath,BindingsPath)) then
           raise EArgumentException.Create('Output path collides with a source dependency');
-      Compilation := TShaderCompiler.CompileResolved(Sources, BindingsUnit, Optimize);
+      Compilation := TShaderCompiler.CompileResolved(Sources, BindingsUnit, Optimize, EntryPointName);
     finally Sources.Free; end;
     // Do not touch outputs until parsing, type checking and generation succeed.
     TDirectory.CreateDirectory(TPath.GetDirectoryName(OutputPath));

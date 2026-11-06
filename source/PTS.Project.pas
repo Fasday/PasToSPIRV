@@ -17,11 +17,11 @@ implementation
 uses
   System.SysUtils, System.Classes, System.JSON, System.IOUtils, System.Hash,
   System.Generics.Collections, System.Generics.Defaults,
-  PTS.Source, PTS.SourceLoader, PTS.Compiler, PTS.FileSafety, PTS.Bindings;
+  PTS.Source, PTS.SourceLoader, PTS.Compiler, PTS.FileSafety, PTS.Bindings, PTS.Names;
 
 type
   TEntry = class
-    Source, Output, Reflection, Bindings, Cache, UnitName: string;
+    Source, Output, Reflection, Bindings, Cache, UnitName, EntryPointName: string;
     Optimize: Boolean;
     ProgramSource: TSourceProgram;
     destructor Destroy; override;
@@ -83,6 +83,7 @@ begin
     B.AppendLine('PasToSPIRV-project-v1').AppendLine(CompilerVersion).AppendLine(Identity);
     // Profile attributes are in the hashed source snapshot.
     B.AppendLine('source-selected-compute-profile/std430-v2').AppendLine(BoolToStr(E.Optimize,True)).AppendLine(E.UnitName);
+    B.AppendLine(E.EntryPointName); // Case-sensitive external name affects SPIR-V and reflection.
     for S in Directories do B.AppendLine(S);
     for F in E.ProgramSource.Files do B.AppendLine(F.DisplayPath).AppendLine(F.SHA256);
     for D in E.ProgramSource.Libraries do B.AppendLine(D.ModuleName).AppendLine(IntToStr(D.FileID));
@@ -185,8 +186,12 @@ begin
     for I := 0 to A.Count - 1 do
     begin
       if not (A.Items[I] is TJSONObject) then raise EArgumentException.Create('Entry must be an object');
-      Item := TJSONObject(A.Items[I]); CheckProperties(Item,'|source|output|reflection|bindings|optimize|');
-      E := TEntry.Create; Entries.Add(E);
+      Item := TJSONObject(A.Items[I]);
+      CheckProperties(Item, '|source|output|reflection|bindings|optimize|entry_point|');
+      E := TEntry.Create;
+      Entries.Add(E);
+      E.EntryPointName := TextProperty(Item, 'entry_point', 'Main');
+      ValidateEntryPointName(E.EntryPointName);
       E.Source := Resolve(Base,TextProperty(Item,'source'));
       E.Output := Resolve(Base,TextProperty(Item,'output'));
       if (E.Source = '') or (E.Output = '') then raise EArgumentException.Create('Entry source and output are required');
@@ -218,7 +223,7 @@ begin
       Key := Fingerprint(E,Directories,ACompilerIdentity);
       if not AForce and (ACompilerIdentity <> '') and CacheValid(E,Key) then
       begin Inc(Result.Cached); Continue; end;
-      C := TShaderCompiler.CompileResolved(E.ProgramSource,E.UnitName,E.Optimize);
+      C := TShaderCompiler.CompileResolved(E.ProgramSource, E.UnitName, E.Optimize, E.EntryPointName);
       TDirectory.CreateDirectory(TPath.GetDirectoryName(E.Output));
       TFile.WriteAllBytes(E.Output,C.SPIRV); WriteText(E.Reflection,C.Reflection);
       if E.Bindings <> '' then WriteText(E.Bindings,C.Bindings);

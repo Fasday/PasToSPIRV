@@ -8,6 +8,9 @@ Vulkan-возможностей или готовый runtime для прило�
 
 - Source language 1.3: подмножество в `language.md`, `extended.md`, `modules.md`, `gpu.md`.
 - Default target: SPIR-V 1.0 / Vulkan 1.0, compute entry Main.
+  С 1.3.3 внешнее имя SPIR-V можно задать через `--entry-point` / project `entry_point` /
+  последний параметр API `AEntryPointName`; исходная процедура остаётся `Main`.
+  По умолчанию ничего не меняется. Хост использует reflection `entry_point` как `pName`.
   Explicit `[Vulkan12]`: SPIR-V 1.3 / Vulkan 1.2, новые scalar/storage types.
 - Reflection ABI: `format_version=2`, std430 bytes. Потребители проверяют версию
   и не трактуют неизвестные descriptor types как storage buffers.

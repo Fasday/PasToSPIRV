@@ -152,10 +152,12 @@ type
     Types: TObjectList<TCompositeType>;
     Functions: TObjectList<TShaderFunction>;
     EntryPoint: TShaderFunction; // Non-owning; also in Functions.
+    EntryPointName: string; // External SPIR-V name; the source procedure remains Main.
     LocalSize: array[0..2] of Cardinal;
     SharedBytes: Cardinal;
     UsesWorkgroupBarrier: Boolean;
     Extended: Boolean;
+    Vulkan11: Boolean;
     StrictFloat: Boolean;
     UsedTypes: set of TShaderType;
     HasReferences: Boolean;
@@ -249,6 +251,7 @@ end;
 constructor TShaderModule.Create;
 begin
   inherited;
+  EntryPointName := 'Main';
   Resources := TObjectList<TShaderVariable>.Create(True);
   Types := TObjectList<TCompositeType>.Create(True);
   Functions := TObjectList<TShaderFunction>.Create(True);

@@ -9,6 +9,10 @@ const
 // Shared by declarations, module names and imports.
 function IsReservedIdentifier(const AName: string): Boolean;
 
+// External SPIR-V name, independent of Pascal keywords and case-insensitive
+// symbol lookup. Accept a bounded ASCII identifier and preserve its case.
+procedure ValidateEntryPointName(const AName: string);
+
 implementation
 
 uses
@@ -33,6 +37,18 @@ var
 begin
   Result := (Pos('|' + LowerCase(AName) + '|', Reserved) <> 0) or
     TryShaderType(AName, DataType) or TryImageType(AName, Format) or TryBuiltin(AName, Builtin);
+end;
+
+procedure ValidateEntryPointName(const AName: string);
+var
+  I: Integer;
+begin
+  if (Length(AName) = 0) or (Length(AName) > MaxIdentifierLength) then
+    raise EArgumentException.Create('Entry-point name must contain 1..127 ASCII identifier characters');
+  for I := 1 to Length(AName) do
+    if not (CharInSet(AName[I], ['a'..'z', 'A'..'Z', '_']) or
+      ((I > 1) and CharInSet(AName[I], ['0'..'9']))) then
+      raise EArgumentException.Create('Entry-point name must be an ASCII identifier: [A-Za-z_][A-Za-z0-9_]*');
 end;
 
 end.

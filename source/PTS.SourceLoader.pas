@@ -18,6 +18,8 @@ const
   MaxDependencyEdges = 65536;
 
 function LoadSourceProgram(const AFileName: string; const AIncludeDirectories: TArray<string>): TSourceProgram;
+function LoadSourceText(const ASource, AFileName: string; const ADependencies: TArray<TSourceText>;
+  const ASearchDirectories: TArray<string> = nil): TSourceProgram;
 
 implementation
 
@@ -52,6 +54,10 @@ type
     // context-independent, so repeated includes reuse it (no exponential work).
     FExpanded: TObjectDictionary<TSourceFile, TSourceDocument>;
     FRawBytes, FRawLines, FExpandedCharacters, FExpandedLines: Int64;
+    FMemorySources: TDictionary<string, TSourceText>;
+    FMemoryMode: Boolean;
+    procedure Initialize;
+    function ResolveMemoryFile(const AName: string; const APosition: TSourcePosition; AModule: Boolean): TSourceFile;
     function DisplayPath(const APath, AHash: string): string;
     function ReadFile(const APath: string; const APosition: TSourcePosition; ARoot: Boolean = False): TSourceFile;
     function ResolveFile(const AName: string; const APosition: TSourcePosition; AModule: Boolean): TSourceFile;
@@ -62,18 +68,15 @@ type
     procedure CountDocument(ADocument: TSourceDocument);
   public
     constructor Create(const AFileName: string; const ADirectories: TArray<string>);
+    constructor CreateText(const ASource, AFileName: string; const ADependencies: TArray<TSourceText>;
+      const ADirectories: TArray<string>);
     destructor Destroy; override;
     function Load(const AFileName: string): TSourceProgram;
   end;
 
-constructor TSourceLoader.Create(const AFileName: string; const ADirectories: TArray<string>);
-var
-  Directory, RequestedDirectory, Existing: string;
-  Duplicate: Boolean;
+procedure TSourceLoader.Initialize;
 begin
-  inherited Create;
   FProgram := TSourceProgram.Create;
-  FRootDirectory := TPath.GetDirectoryName(TPath.GetFullPath(AFileName));
   FIncludeDirectories := TList<string>.Create;
   FFiles := TDictionary<string, TSourceFile>.Create(TIStringComparer.Ordinal);
   FModulePaths := TDictionary<string, string>.Create(TIStringComparer.Ordinal);
@@ -81,6 +84,49 @@ begin
   FIncludeStack := TList<TSourceFile>.Create;
   FModuleStack := TList<string>.Create;
   FExpanded := TObjectDictionary<TSourceFile, TSourceDocument>.Create([doOwnsValues]);
+end;
+
+function VirtualSourcePath(const AName: string): string;
+var
+  Parts: TArray<string>;
+  Part: string;
+  Count: Integer;
+begin
+  Result := StringReplace(AName, '\', '/', [rfReplaceAll]);
+  if (Result = '') or (Result[1] = '/') or (Pos(':', Result) <> 0) or (Pos(#0, Result) <> 0) then
+    raise EArgumentException.Create('Virtual source paths must be relative and non-empty');
+  Parts := Result.Split(['/'], TStringSplitOptions.None);
+  Count := 0;
+  for Part in Parts do
+  begin
+    if (Part = '') or (Part = '.') then
+      Continue;
+    if Part = '..' then
+    begin
+      if Count = 0 then
+        raise EArgumentException.Create('Virtual source path escapes its namespace');
+      Dec(Count);
+    end
+    else
+    begin
+      Parts[Count] := Part;
+      Inc(Count);
+    end;
+  end;
+  if Count = 0 then
+    raise EArgumentException.Create('Virtual source paths must name a source');
+  SetLength(Parts, Count);
+  Result := string.Join('/', Parts);
+end;
+
+constructor TSourceLoader.Create(const AFileName: string; const ADirectories: TArray<string>);
+var
+  Directory, RequestedDirectory, Existing: string;
+  Duplicate: Boolean;
+begin
+  inherited Create;
+  Initialize;
+  FRootDirectory := TPath.GetDirectoryName(TPath.GetFullPath(AFileName));
   for RequestedDirectory in ADirectories do
   begin
     Directory := IncludeTrailingPathDelimiter(TPath.GetFullPath(RequestedDirectory));
@@ -93,8 +139,41 @@ begin
   end;
 end;
 
+constructor TSourceLoader.CreateText(const ASource, AFileName: string;
+  const ADependencies: TArray<TSourceText>; const ADirectories: TArray<string>);
+var
+  Source: TSourceText;
+  Directory: string;
+
+  procedure AddSource(const AName, AText: string);
+  var
+    Name: string;
+  begin
+    Name := VirtualSourcePath(AName);
+    if FMemorySources.ContainsKey(Name) then
+      raise EArgumentException.Create('Duplicate virtual source: ' + Name);
+    FMemorySources.Add(Name, TSourceText.Create(Name, AText));
+  end;
+begin
+  inherited Create;
+  Initialize;
+  FMemoryMode := True;
+  FMemorySources := TDictionary<string, TSourceText>.Create(TIStringComparer.Ordinal);
+  if Length(ADependencies) >= MaxSourceFiles then
+    raise EArgumentException.Create('Source file limit exceeded (512)');
+  AddSource(AFileName, ASource);
+  for Source in ADependencies do
+    AddSource(Source.FileName, Source.Text);
+  for Directory in ADirectories do
+    if (Directory = '') or (Directory = '.') then
+      FIncludeDirectories.Add('')
+    else
+      FIncludeDirectories.Add(VirtualSourcePath(Directory));
+end;
+
 destructor TSourceLoader.Destroy;
 begin
+  FMemorySources.Free;
   FExpanded.Free;
   FModuleStack.Free;
   FIncludeStack.Free;
@@ -111,6 +190,8 @@ var
   I: Integer;
   Prefix: string;
 begin
+  if FMemoryMode then
+    Exit(APath);
   Result := ExtractRelativePath(IncludeTrailingPathDelimiter(FRootDirectory), APath);
   if not TPath.IsPathRooted(Result) then Exit(StringReplace(Result, '\', '/', [rfReplaceAll]));
   for I := 0 to FIncludeDirectories.Count - 1 do
@@ -130,20 +211,42 @@ var
   Encoding: TUTF8Encoding;
   I, Lines: Integer;
   Hash: THashSHA2;
+  Source: TSourceText;
 begin
-  Path := TPath.GetFullPath(APath);
+  if FMemoryMode then
+  begin
+    Path := VirtualSourcePath(APath);
+    if not FMemorySources.TryGetValue(Path, Source) then
+      raise EShaderError.Create(APosition, 'Dependency not found: ' + Path);
+    Path := Source.FileName;
+  end
+  else
+    Path := TPath.GetFullPath(APath);
   if FFiles.TryGetValue(Path, Result) then Exit;
   if FProgram.Files.Count >= MaxSourceFiles then
     raise EShaderError.Create(APosition, 'Source file limit exceeded (512)');
   try
-    Stream := TFileStream.Create(Path, fmOpenRead or fmShareDenyWrite);
-    try
-      if (Stream.Size > MaxSourceBytes) or (FRawBytes + Stream.Size > MaxSourceBytes) then
+    if FMemoryMode then
+    begin
+      if Length(Source.Text) > MaxSourceBytes then
         raise EShaderError.Create(APosition, 'Source input budget exceeded (8 MiB)');
-      SetLength(Bytes, Integer(Stream.Size));
-      if Length(Bytes) > 0 then Stream.ReadBuffer(Bytes[0], Length(Bytes));
-    finally
-      Stream.Free;
+      Bytes := TEncoding.UTF8.GetBytes(Source.Text);
+      if FRawBytes + Length(Bytes) > MaxSourceBytes then
+        raise EShaderError.Create(APosition, 'Source input budget exceeded (8 MiB)');
+      if TEncoding.UTF8.GetString(Bytes) <> Source.Text then
+        raise EShaderError.Create(APosition, 'Source must contain valid Unicode text');
+    end
+    else
+    begin
+      Stream := TFileStream.Create(Path, fmOpenRead or fmShareDenyWrite);
+      try
+        if (Stream.Size > MaxSourceBytes) or (FRawBytes + Stream.Size > MaxSourceBytes) then
+          raise EShaderError.Create(APosition, 'Source input budget exceeded (8 MiB)');
+        SetLength(Bytes, Integer(Stream.Size));
+        if Length(Bytes) > 0 then Stream.ReadBuffer(Bytes[0], Length(Bytes));
+      finally
+        Stream.Free;
+      end;
     end;
     Encoding := TUTF8Encoding.Create(False);
     try
@@ -197,6 +300,8 @@ var
   Duplicate: Boolean;
   I: Integer;
 begin
+  if FMemoryMode then
+    Exit(ResolveMemoryFile(AName, APosition, AModule));
   Name := AName;
   if AModule then Name := Name + '.pasm';
   if not TPath.HasValidPathChars(Name, False) then
@@ -231,6 +336,44 @@ begin
   finally
     Candidates.Free;
   end;
+end;
+
+function TSourceLoader.ResolveMemoryFile(const AName: string; const APosition: TSourcePosition;
+  AModule: Boolean): TSourceFile;
+var
+  Name, Directory, Candidate, Found: string;
+  Source: TSourceText;
+  I: Integer;
+begin
+  Name := AName;
+  if AModule then
+    Name := Name + '.pasm';
+  if (Name = '') or CharInSet(Name[1], ['/', '\']) or (Pos(':', Name) <> 0) then
+    raise EShaderError.Create(APosition, 'Dependency paths must be relative');
+  Found := '';
+  for I := -1 to FIncludeDirectories.Count - 1 do
+  begin
+    if I < 0 then
+      Directory := Copy(APosition.FileName, 1, LastDelimiter('/', APosition.FileName))
+    else if FIncludeDirectories[I] = '' then
+      Directory := ''
+    else
+      Directory := FIncludeDirectories[I] + '/';
+    try
+      Candidate := VirtualSourcePath(Directory + Name);
+    except
+      on E: EArgumentException do
+        raise EShaderError.Create(APosition, E.Message);
+    end;
+    if not FMemorySources.TryGetValue(Candidate, Source) then
+      Continue;
+    if (Found <> '') and not SameText(Found, Source.FileName) then
+      raise EShaderError.Create(APosition, 'Ambiguous dependency "' + Name + '": ' + Found + ', ' + Source.FileName);
+    Found := Source.FileName;
+  end;
+  if Found = '' then
+    raise EShaderError.Create(APosition, 'Dependency not found: ' + Name);
+  Result := ReadFile(Found, APosition);
 end;
 
 procedure TSourceLoader.AddEdge(const APosition: TSourcePosition; ATarget: TSourceFile; const AKind: string);
@@ -448,7 +591,8 @@ begin
   AddEdge(AImport.Position, FileInfo, 'uses');
   if FModulePaths.TryGetValue(AImport.Name, Path) then
   begin
-    if not AnsiSameText(Path, FileInfo.FullPath) and not SameFileOrPath(Path, FileInfo.FullPath) then
+    if not AnsiSameText(Path, FileInfo.FullPath) and
+      (FMemoryMode or not SameFileOrPath(Path, FileInfo.FullPath)) then
       raise EShaderError.Create(AImport.Position, 'Conflicting files for module ' + AImport.Name);
     if FModuleStates[AImport.Name] = 1 then
       raise EShaderError.Create(AImport.Position, 'Module cycle: ' + string.Join(' -> ', FModuleStack.ToArray) + ' -> ' + AImport.Name);
@@ -497,9 +641,14 @@ var
   RootFile: TSourceFile;
   Dependency: TImport;
 begin
-  if not TFile.Exists(TPath.GetFullPath(AFileName)) then
-    raise EFileNotFoundException.Create('Input file not found: ' + TPath.GetFullPath(AFileName));
-  RootFile := ReadFile(TPath.GetFullPath(AFileName), TSourcePosition.Create(1, 1, TPath.GetFullPath(AFileName)), True);
+  if FMemoryMode then
+    RootFile := ReadFile(AFileName, TSourcePosition.Create(1, 1, AFileName), True)
+  else
+  begin
+    if not TFile.Exists(TPath.GetFullPath(AFileName)) then
+      raise EFileNotFoundException.Create('Input file not found: ' + TPath.GetFullPath(AFileName));
+    RootFile := ReadFile(TPath.GetFullPath(AFileName), TSourcePosition.Create(1, 1, TPath.GetFullPath(AFileName)), True);
+  end;
   FProgram.Root := ExpandIncludes(RootFile);
   for Dependency in ReadHeader(FProgram.Root, '') do LoadModule(Dependency);
   CountDocument(FProgram.Root);
@@ -512,6 +661,19 @@ var
   Loader: TSourceLoader;
 begin
   Loader := TSourceLoader.Create(AFileName, AIncludeDirectories);
+  try
+    Result := Loader.Load(AFileName);
+  finally
+    Loader.Free;
+  end;
+end;
+
+function LoadSourceText(const ASource, AFileName: string; const ADependencies: TArray<TSourceText>;
+  const ASearchDirectories: TArray<string>): TSourceProgram;
+var
+  Loader: TSourceLoader;
+begin
+  Loader := TSourceLoader.CreateText(ASource, AFileName, ADependencies, ASearchDirectories);
   try
     Result := Loader.Load(AFileName);
   finally

@@ -9,6 +9,12 @@ uses
   PTS.Diagnostics;
 
 type
+  TSourceText = record
+    FileName: string;
+    Text: string;
+    class function Create(const AFileName, AText: string): TSourceText; static;
+  end;
+
   TSourceLine = record
     FileName: string;
     Line: Integer;
@@ -57,6 +63,12 @@ implementation
 
 uses
   System.SysUtils;
+
+class function TSourceText.Create(const AFileName, AText: string): TSourceText;
+begin
+  Result.FileName := AFileName;
+  Result.Text := AText;
+end;
 
 constructor TSourceDocument.Create(const AText, AFileName: string);
 var

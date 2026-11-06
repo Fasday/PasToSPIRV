@@ -89,9 +89,11 @@ begin
   begin
     for T in [stByte, stWord, stInt64, stUInt64, stDouble] do
       if T in AModule.UsedTypes then
-        raise EShaderError.Create(AModule.EntryPoint.Position, ShaderTypeName(T) + ' requires [Vulkan12] on Main');
+        raise EShaderError.Create(AModule.EntryPoint.Position, ShaderTypeName(T) +
+          ' requires [Vulkan12] on Main (or [Vulkan11] with the reflected device extensions)');
     if AModule.StrictFloat or AModule.HasReferences then
-      raise EShaderError.Create(AModule.EntryPoint.Position, 'StrictFloat and var/out parameters require [Vulkan12]');
+      raise EShaderError.Create(AModule.EntryPoint.Position,
+        'StrictFloat and var/out parameters require [Vulkan12] (or [Vulkan11] with the reflected device extensions)');
   end;
 end;
 

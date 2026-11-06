@@ -1679,7 +1679,7 @@ begin
     else Name(FunctionID, ShaderFunction.Name);
   end;
   FMainID := FFunctionIDs[FModule.EntryPoint];
-  EmitString(FEntryPoints, 15, [5, FMainID], 'Main', FInvocationIDs);
+  EmitString(FEntryPoints, 15, [5, FMainID], FModule.EntryPointName, FInvocationIDs);
   if FModule.StrictFloat then
   begin
     Emit(FEntryPoints, 16, [FMainID, 4459, 32]);

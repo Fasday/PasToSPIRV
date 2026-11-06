@@ -316,16 +316,19 @@ foreach ($case in $featureFailures) { Test-Failure $case[0] $case[1] $case[2] }
 . (Join-Path $root 'tests\vectors.ps1')
 . (Join-Path $root 'tests\layout.ps1')
 . (Join-Path $root 'tests\modules.ps1')
+. (Join-Path $root 'tests\component.ps1')
 . (Join-Path $root 'tests\release.ps1')
 . (Join-Path $root 'tests\audit.ps1')
 . (Join-Path $root 'tests\audit2.ps1')
 . (Join-Path $root 'tests\sketch.ps1')
 . (Join-Path $root 'tests\extended.ps1')
+. (Join-Path $root 'tests\vulkan11.ps1')
 . (Join-Path $root 'tests\audit11.ps1')
 . (Join-Path $root 'tests\audit112.ps1')
 . (Join-Path $root 'tests\syntax12.ps1')
 . (Join-Path $root 'tests\syntax13.ps1')
 . (Join-Path $root 'tests\softdouble.ps1')
+. (Join-Path $root 'tests\entry_points.ps1')
 Test-Failure 'nul' ("procedure Main; begin end;" + [char]0) 'NUL'
 $fields = (1..33 | ForEach-Object { "N$($_): Cardinal;" }) -join ' '
 Test-Failure 'large_push' "var [PushConstant] P: record $fields end; procedure Main; begin end;" '128 bytes'
@@ -375,4 +378,4 @@ $collision = Invoke-Tool $compiler @($inputPath, '-o', $repeatPath, '--reflectio
 Assert-True ($collision.Code -eq 2) 'SPIR-V/reflection collision was not rejected'
 $script:checks += 3
 
-Write-Host "PASS: $script:checks checks (including Vulkan 1.0/1.2 SPIR-V validation)."
+Write-Host "PASS: $script:checks checks (including Vulkan 1.0/1.1/1.2 SPIR-V validation)."

@@ -11,7 +11,8 @@ Pascal-подмножество → лексер/парсер → типизир
 
 ## Статус
 
-Версия **1.3.2**: default **compute-vulkan1.0**, optional **compute-vulkan1.2**.
+Ветка разработки **1.4.0**: default **compute-vulkan1.0**, optional
+**compute-vulkan1.1** / **compute-vulkan1.2** и компонент компиляции из памяти.
 Компилятор напрямую записывает бинарный
 SPIR-V: он не переводит исходник в GLSL и не вызывает сторонний компилятор.
 
@@ -20,6 +21,7 @@ SPIR-V: он не переводит исходник в GLSL и не вызыв
 - compute entry point `procedure Main` и размер рабочей группы;
 - `Integer`, `Cardinal`, `Single`, локальный `Boolean`;
 - optional Vulkan12: `Byte`, `Word`, `Int64`, `UInt64`, `Double`, native small storage;
+- optional [Vulkan11](docs/vulkan11.md): те же типы и операции с явными требованиями к расширениям устройства;
 - `Integer2/3/4`, `Cardinal2/3/4`, `Single2/3/4`, конструкторы и компоненты `.X/.Y/.Z/.W`;
 - storage buffers с явными descriptor set/binding и правами доступа;
 - один push-constant блок с записями, статическими массивами и векторами;
@@ -92,13 +94,29 @@ Vulkan SDK, Vulkan-драйвер и Python **не нужны**. Для откр
 Слово `compile` необязательно. Без `-o` результат сохраняется рядом с исходником.
 Путь JSON можно изменить через `--reflection <path>`.
 
+Исходник шейдера можно назвать `shader.pasm`: расширение entry-файла не ограничено.
+В отличие от подключаемого модуля, entry-файл содержит `procedure Main` и не имеет
+заголовка `module`. Для хоста, который ожидает имя `main` в SPIR-V:
+
+```powershell
+.\build\bin\PasToSPIRV.exe compile shader.pasm --entry-point main -o .\build\shader.spv
+```
+
+В исходнике по-прежнему `procedure Main`; меняется только внешнее имя. Оно сохраняется
+с учётом регистра в SPIR-V и reflection (`entry_point`), откуда хост берёт `pName`.
+
 ### Подключаемые модули и исходники
+
+Для компиляции внутри приложения доступен невизуальный Delphi-компонент
+`PTS.Component.TShaderCompilerComponent`. Он принимает текст шейдера и `.pasm`
+зависимостей из памяти, не обращаясь к файловой системе и внешнему компилятору.
+API, ресурсы и диагностика описаны в [docs/runtime.md](docs/runtime.md).
 
 ```powershell
 .\build\bin\PasToSPIRV.exe compile .\examples\modules_compute.pas -I .\examples\modules -o .\build\modules.spv
 ```
 
-Shader объявляет `uses SharedTypes, SharedMath, SharedBits;`. Каждый `.pasm` содержит
+Shader объявляет `uses SharedTypes, SharedMath, SharedBits;`. Каждый подключаемый модуль `.pasm` содержит
 `module Name;`, зависимости и только constants/types/functions/procedures; include подключает общий `.inc`.
 Повторные импорты и diamond-зависимости не дублируют объявления. Циклы, пропущенные
 зависимости и неоднозначные пути диагностируются явно. Это минимальная модульность,
@@ -176,7 +194,8 @@ end;
 Аргументы `Binding` — **descriptor set, binding**, в этом порядке.
 Массивы в этом примере соответствуют `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER`; шаг элементов — 4 байта.
 Push constants в примере: `Count` по смещению 0, `Scale` по смещению 4, всего 8 байт.
-Имя entry point для `VkPipelineShaderStageCreateInfo.pName` — **`Main`**.
+Имя entry point для `VkPipelineShaderStageCreateInfo.pName` по умолчанию — **`Main`**,
+либо значение `--entry-point` (регистр важен). Оно указано в reflection `entry_point`.
 
 Хост-приложение самостоятельно создаёт Vulkan-ресурсы, передаёт параметры,
 задаёт dispatch и обеспечивает синхронизацию. Автоматических проверок границ

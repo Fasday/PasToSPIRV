@@ -12,6 +12,10 @@ SPIR-V for Vulkan. This is not a Delphi-to-GPU application converter.
   of the compiler. The optional Python Vulkan test uses the standard library.
 - Default target: SPIR-V 1.0 / Vulkan 1.0, compute Main. Explicit Vulkan12 uses
   SPIR-V 1.3 / Vulkan 1.2; reflect required device features, never upgrade silently.
+- Explicit Vulkan11 uses SPIR-V 1.3 with reflected device-extension requirements.
+  It does not emulate missing native arithmetic or weaken StrictFloat.
+- Source entry procedure stays Main. Its external SPIR-V name defaults to Main;
+  preserve the exact configured case in emission, reflection and project cache keys.
 - Version 1.x is a bounded compute language, not full Delphi/GLSL. Keep
   `docs/compatibility.md` and `docs/gpu.md` in sync with accepted constructs.
 - Keep documentation and examples independent of any particular consuming

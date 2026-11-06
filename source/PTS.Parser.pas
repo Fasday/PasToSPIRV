@@ -25,6 +25,7 @@ type
     HasPushConstant: Boolean;
     HasLocalSize: Boolean;
     HasShared: Boolean;
+    HasVulkan11: Boolean;
     HasVulkan12: Boolean;
     HasStrictFloat: Boolean;
     HasAliased: Boolean;
@@ -1032,9 +1033,19 @@ begin
           Result.LocalSize[2] > 1024 then
           Fail('LocalSize must not exceed 1024 invocations per workgroup');
       end
+      else if Name = 'vulkan11' then
+      begin
+        if Result.HasVulkan11 then
+          Fail('Duplicate Vulkan11 attribute');
+        if Result.HasVulkan12 then
+          Fail('Vulkan11 and Vulkan12 cannot be combined');
+        Result.HasVulkan11 := True;
+      end
       else if Name = 'vulkan12' then
       begin
         if Result.HasVulkan12 then Fail('Duplicate Vulkan12 attribute');
+        if Result.HasVulkan11 then
+          Fail('Vulkan11 and Vulkan12 cannot be combined');
         Result.HasVulkan12 := True;
       end
       else if Name = 'strictfloat' then
@@ -1085,6 +1096,8 @@ begin
     Fail(Format('Shader resources are limited to %d', [MaxResources]));
   if AAttributes.HasLocalSize then
     Fail('LocalSize is only valid on procedure Main');
+  if AAttributes.HasVulkan11 then
+    Fail('Vulkan11 is only valid on procedure Main');
   if AAttributes.HasVulkan12 or AAttributes.HasStrictFloat then
     Fail('Vulkan12/StrictFloat are only valid on procedure Main');
   Name := ReadName;
@@ -1296,7 +1309,8 @@ begin
     Name := FToken;
     ExpectWord('Main');
     Name.Text := 'Main';
-    FModule.Extended := AAttributes.HasVulkan12;
+    FModule.Extended := AAttributes.HasVulkan11 or AAttributes.HasVulkan12;
+    FModule.Vulkan11 := AAttributes.HasVulkan11;
     FModule.StrictFloat := AAttributes.HasStrictFloat;
     if AAttributes.HasLocalSize then
       for I := 0 to 2 do

@@ -60,7 +60,7 @@ var
   Edge: TSourceDependency;
   Sources, Modules, Dependencies: TJSONArray;
   Images, Textures, Samplers, Shared: TJSONArray;
-  Required: TJSONArray;
+  Required, RequiredExtensions: TJSONArray;
 begin
   Root := TJSONObject.Create;
   try
@@ -68,7 +68,13 @@ begin
     Root.AddPair('compiler', 'PasToSPIRV');
     Root.AddPair('compiler_version', AVersion);
     Root.AddPair('language_version','1.3');
-    if AModule.Extended then
+    if AModule.Vulkan11 then
+    begin
+      Root.AddPair('profile', 'compute-vulkan1.1');
+      Root.AddPair('target_env', 'vulkan1.1');
+      Root.AddPair('spirv_version', '1.3');
+    end
+    else if AModule.Extended then
     begin
       Root.AddPair('profile','compute-vulkan1.2');
       Root.AddPair('target_env', 'vulkan1.2');
@@ -95,6 +101,17 @@ begin
     if AModule.Storage16 then Required.Add('storageBuffer16BitAccess');
     if AModule.Push8 then Required.Add('storagePushConstant8');
     if AModule.Push16 then Required.Add('storagePushConstant16');
+    if AModule.Vulkan11 then
+    begin
+      RequiredExtensions := TJSONArray.Create;
+      Root.AddPair('required_device_extensions', RequiredExtensions);
+      if stByte in AModule.UsedTypes then
+        RequiredExtensions.Add('VK_KHR_shader_float16_int8');
+      if AModule.Storage8 or AModule.Push8 then
+        RequiredExtensions.Add('VK_KHR_8bit_storage');
+      if AModule.StrictFloat then
+        RequiredExtensions.Add('VK_KHR_shader_float_controls');
+    end;
     Root.AddPair('strict_float', TJSONBool.Create(AModule.StrictFloat));
     if AModule.StrictFloat then
     begin
@@ -108,7 +125,7 @@ begin
     end;
     if AOptimize then Root.AddPair('optimization','O1-safe-integer') else Root.AddPair('optimization','O0');
     Root.AddPair('stage', 'compute');
-    Root.AddPair('entry_point', 'Main');
+    Root.AddPair('entry_point', AModule.EntryPointName);
     Root.AddPair('layout', 'std430');
     Root.AddPair('workgroup_memory_bytes', TJSONNumber.Create(AModule.SharedBytes));
     Root.AddPair('uses_workgroup_barrier', TJSONBool.Create(AModule.UsesWorkgroupBarrier));

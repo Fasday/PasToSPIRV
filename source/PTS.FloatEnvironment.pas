@@ -12,7 +12,8 @@ uses System.Math;
 type
   TCompilerFloatState = record
     Rounding: TRoundingMode;
-    Exceptions: TFPUExceptionMask;
+    Exceptions: TArithmeticExceptionMask;
+    Flags: TArithmeticExceptions;
   end;
 {$ENDIF}
 
@@ -42,13 +43,16 @@ function EnterCompilerFloatEnvironment: TCompilerFloatState;
 begin
   Result.Rounding := GetRoundMode;
   Result.Exceptions := GetExceptionMask;
+  Result.Flags := GetExceptions;
   SetExceptionMask([exInvalidOp,exDenormalized,exZeroDivide,exOverflow,exUnderflow,exPrecision]);
+  ClearExceptions(False);
   SetRoundMode(rmNearest);
 end;
 
 procedure LeaveCompilerFloatEnvironment(const AState: TCompilerFloatState);
 begin
-  ClearExceptions;
+  ClearExceptions(False);
+  SetExceptions(AState.Flags);
   SetRoundMode(AState.Rounding);
   SetExceptionMask(AState.Exceptions);
 end;

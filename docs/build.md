@@ -7,7 +7,7 @@
   "optimize": true,
   "entries": [
     {"source": "first.pas", "output": "build/first.spv", "bindings": "build/FirstBindings.pas"},
-    {"source": "second.pas", "output": "build/second.spv", "optimize": false}
+    {"source": "second.pasm", "output": "build/second.spv", "optimize": false, "entry_point": "main"}
   ]
 }
 ```
@@ -21,6 +21,11 @@ pastospirv build project.json --force
   paths допустимы; это локальный инструмент, не sandbox.
 - 1..256 entries, source/output обязательны. Reflection по умолчанию — `.json`
   рядом с output, bindings опционален, optimize у entry перекрывает общий.
+- Необязательный `entry_point` у entry — внешнее имя точки входа SPIR-V (по умолчанию
+  `Main`, регистр сохраняется). Процедура исходника всё равно `Main`. Имя —
+  ASCII-идентификатор длиной 1..127; пустое значение и другие типы JSON запрещены.
+  Проверка всех имён выполняется до записи outputs. В CLI одиночной компиляции
+  аналогичная настройка — `--entry-point main`.
 - JSON должен иметь правильные типы; неизвестные и **повторяющиеся** свойства —
   ошибка, не игнорируются. Имя bindings unit проверяется по тем же правилам, что
   при генерации, ещё до записи любых артефактов.
@@ -42,7 +47,8 @@ pastospirv build project.json --force
 ## Корректность cache hit
 
 Рядом с output находится `<output>.cache.json`. Key зависит от compiler version,
-хеша CLI executable, target, optimization, bindings unit name, поиска зависимостей,
+хеша CLI executable, target, optimization, bindings unit name, внешнего имени точки
+входа (с учётом регистра), поиска зависимостей,
 сырого содержимого/графа всех прочитанных источников. Абсолютные пути в manifest
 не записываются: конфигурация пути может влиять на хеш key, не раскрываться строкой.
 

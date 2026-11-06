@@ -51,25 +51,108 @@ begin
   Check(Rejected, 'String API must not resolve filesystem dependencies');
 end;
 
+procedure CheckEntryName(const AResult: TCompilationResult; const AExpected: string);
+var
+  Metadata: TJSONObject;
+  Offset, I, Start: Integer;
+  Header, WordValue: Cardinal;
+  Actual: string;
+begin
+  Metadata := TJSONObject.ParseJSONValue(AResult.Reflection) as TJSONObject;
+  try
+    Check(Metadata.GetValue<string>('entry_point') = AExpected, 'API entry-point reflection mismatch');
+  finally
+    Metadata.Free;
+  end;
+  // Decode the NUL-terminated OpEntryPoint name directly from the binary.
+  Offset := 20;
+  Actual := '';
+  while Offset < Length(AResult.SPIRV) do
+  begin
+    Move(AResult.SPIRV[Offset], Header, 4);
+    if Header and $FFFF = 15 then
+    begin
+      Start := Offset + 12; // header, execution model, function ID
+      I := Start;
+      while (I < Length(AResult.SPIRV)) and (AResult.SPIRV[I] <> 0) do
+      begin
+        Actual := Actual + Char(AResult.SPIRV[I]);
+        Inc(I);
+      end;
+      Break;
+    end;
+    WordValue := Header shr 16;
+    Check(WordValue > 0, 'Invalid SPIR-V instruction length');
+    Inc(Offset, Integer(WordValue) * 4);
+  end;
+  Check(Actual = AExpected, 'API binary entry-point mismatch');
+end;
+
 var
   Compilation: TCompilationResult;
   Metadata: TJSONObject;
   HadOutput: Boolean;
   ShaderPath, OriginalOutput, ErrorPath: string;
+  Sources: TSourceProgram;
+  BadName: string;
+  Rejected: Boolean;
 begin
   try
     if ParamCount <> 3 then raise EArgumentException.Create('Expected shader, search directory and included-error shader');
     Compilation := TShaderCompiler.Compile('procedure Main; begin end;');
     Check(Length(Compilation.SPIRV) > 20, 'String API did not compile');
+    CheckEntryName(Compilation, 'Main');
+    Compilation := TShaderCompiler.Compile('procedure Main; begin end;', '', True, 'main');
+    CheckEntryName(Compilation, 'main');
+    for BadName in TArray<string>.Create('', '1bad', 'bad name', 'a' + #0 + 'b', StringOfChar('K', 128)) do
+    begin
+      Rejected := False;
+      try
+        TShaderCompiler.Compile('procedure Main; begin end;', '', False, BadName);
+      except
+        on E: EArgumentException do
+          Rejected := True;
+      end;
+      Check(Rejected, 'String API accepted an invalid external entry name');
+    end;
     CheckStringMode('{$I ''missing.inc''}' + #10 + 'procedure Main; begin end;');
     CheckStringMode('uses Missing; procedure Main; begin end;');
     ShaderPath := TPath.GetFullPath(ParamStr(1));
+    Rejected := False;
+    try
+      TShaderCompiler.CompileFile(ShaderPath, nil, '', False, '');
+    except
+      on E: EArgumentException do
+        Rejected := True;
+    end;
+    Check(Rejected, 'File API accepted an empty external entry name');
     OriginalOutput := ChangeFileExt(ShaderPath, '.spv');
     HadOutput := TFile.Exists(OriginalOutput);
     Compilation := TShaderCompiler.CompileFile(ShaderPath, TArray<string>.Create(ParamStr(2)), 'APIBindings');
     Check(Length(Compilation.SPIRV) > 20, 'File API did not compile');
     Check(Pos('unit APIBindings;', Compilation.Bindings) <> 0, 'Bindings option did not reach the file API');
     Check(TFile.Exists(OriginalOutput) = HadOutput, 'File API wrote an output file');
+    CheckEntryName(Compilation, 'Main');
+    Compilation := TShaderCompiler.CompileFile(ShaderPath, TArray<string>.Create(ParamStr(2)), '', False, 'Kernel_42');
+    CheckEntryName(Compilation, 'Kernel_42');
+    Check(TFile.Exists(OriginalOutput) = HadOutput, 'Renamed file API wrote an output file');
+    Sources := LoadSourceProgram(ShaderPath, TArray<string>.Create(ParamStr(2)));
+    try
+      Rejected := False;
+      try
+        TShaderCompiler.CompileResolved(Sources, '', False, 'a' + #0 + 'b');
+      except
+        on E: EArgumentException do
+          Rejected := True;
+      end;
+      Check(Rejected, 'Resolved API accepted NUL in the external entry name');
+      Compilation := TShaderCompiler.CompileResolved(Sources, '', True, 'main');
+      CheckEntryName(Compilation, 'main');
+      Compilation := TShaderCompiler.CompileResolved(Sources);
+      CheckEntryName(Compilation, 'Main'); // Reuse must not inherit the last name.
+    finally
+      Sources.Free;
+    end;
     Metadata := TJSONObject.ParseJSONValue(Compilation.Reflection) as TJSONObject;
     try
       Check(Metadata.GetValue<TJSONArray>('sources').Count = 7, 'Dependency manifest size');

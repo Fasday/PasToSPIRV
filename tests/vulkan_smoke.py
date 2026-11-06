@@ -724,6 +724,18 @@ def main(require_shared_cpu=False):
                 if got[k * 16:(k + 1) * 16] != want or hits[k] != int(x > 4):
                     raise AssertionError(f"syntax_group2 O{int(optimize)} x={x}: {got[k*16:(k+1)*16]} "
                                          f"hits {hits[k]}, want {want} hits {int(x > 4)}")
+        # The Vulkan host uses the exact external name reflected by the compiler,
+        # not the Pascal procedure's fixed name Main. Exercise .pasm entry files.
+        for optimize in (False, True):
+            renamed = output / f"entry_point_O{int(optimize)}.spv"
+            command = [str(root / "build/bin/PasToSPIRV.exe"), "compile",
+                       str(root / "tests/fixtures/entry_point.pasm"),
+                       "--entry-point", "main", "-o", str(renamed)]
+            if optimize:
+                command.append("-O1")
+            subprocess.run(command, check=True, capture_output=True)
+            result = runtime.run(renamed, {"Data": bytes(64 * 4)}, struct.pack("<I", 7), 1)
+            assert struct.unpack("<64I", result["Data"]) == tuple(i * 3 + 7 for i in range(64))
         print(f"PASS: {runtime.dispatches} real Vulkan dispatches, device #{runtime.device_index}, queue family {runtime.family}.")
         print(f"Checked {count} elements, integer overflow/logical shifts, bounds guards and Count=0.")
         print("Checked 16 numeric edge cases: signed div/mod, masked shifts, casts and wraparound.")
