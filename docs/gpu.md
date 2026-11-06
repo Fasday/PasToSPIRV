@@ -1,10 +1,11 @@
-# GPU compute profiles
+# GPU profiles
 
 Цель — SPIR-V 1.0 / Vulkan 1.0, entry point по умолчанию `Main`. Внешнее имя можно
 изменить через `--entry-point` (процедура исходника остаётся `Main`); хост передаёт
 reflection `entry_point` в `VkPipelineShaderStageCreateInfo.pName`, с точным регистром.
-Это вычислительный профиль,
-не полный Delphi, не все GPU-возможности и не готовый Vulkan runtime.
+По умолчанию это вычислительный профиль. Явные `[Vertex]`/`[Fragment]`, их
+интерфейсы и ограничения описаны в [graphics.md](graphics.md). Это не полный
+Delphi, не все GPU-возможности и не готовый Vulkan runtime.
 
 По умолчанию профиль сохранён. Явный `[Vulkan12]` добавляет SPIR-V 1.3 / Vulkan 1.2,
 Byte/Word native storage, Int64/UInt64/Double и var/out. `[StrictFloat]` запрашивает

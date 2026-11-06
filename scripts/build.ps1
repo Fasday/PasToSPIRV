@@ -61,7 +61,7 @@ foreach ($resource in $Resources) {
 
 Push-Location ([IO.Path]::GetDirectoryName($Project))
 try {
-    & $compiler '-B' '-Q' '-W+' '-H+' "-U$library" "-N0$units" "-E$output" $Project
+    & $compiler '-B' '-Q' '-W+' '-H+' "-U$library;$root\source" "-N0$units" "-E$output" $Project
     if ($LASTEXITCODE -ne 0) {
         throw "Delphi compilation failed (exit code $LASTEXITCODE)."
     }

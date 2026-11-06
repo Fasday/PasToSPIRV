@@ -220,6 +220,8 @@ begin
   end;
   for Variable in FModule.Resources do
   begin
+    if Variable.Kind in [vkInput, vkOutput] then
+      Continue;
     if Variable.Kind in [vkImage,vkTexture,vkSampler] then
     begin
       Prefix := 'PTS_Descriptor_' + Variable.Name;

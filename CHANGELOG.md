@@ -2,6 +2,12 @@
 
 ## 1.4.0 — runtime component and Vulkan 1.1 (unreleased)
 
+- Explicit Vertex/Fragment stages with typed location/built-in interfaces,
+  Flat/NoPerspective interpolation, depth output, Discard and fine derivatives.
+- Structured ordered pixel interlock with coherent storage images and reflected
+  device requirements. No external shader compiler is used for emission.
+- Combined floating/unsigned 2D textures, TexelFetch/TextureSize, mixed-vector
+  constructors and floating RoundFloat/FloorFloat helpers.
 - Nonvisual `TShaderCompilerComponent` and `CompileText` compile explicit in-memory
   source/module/include snapshots without filesystem resolution or external tools.
 - `[Vulkan11]` emits SPIR-V 1.3 with native feature and device-extension requirements;

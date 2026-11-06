@@ -113,12 +113,12 @@ def checked(result, operation):
 
 
 class StorageBuffer:
-    def __init__(self, runtime, payload, cleanup):
+    def __init__(self, runtime, payload, cleanup, usage=0x23):
         self.runtime = runtime
         self.buffer, self.memory, self.mapping = U64(), U64(), PTR()
         self.size = len(payload)
         cleanup.callback(self.close)
-        info = BufferCreateInfo(sType=12, size=self.size, usage=0x23)
+        info = BufferCreateInfo(sType=12, size=self.size, usage=usage)
         checked(runtime.vkCreateBuffer(runtime.device, C.byref(info), None,
                                        C.byref(self.buffer)), "vkCreateBuffer")
         requirements = MemoryRequirements()
@@ -228,7 +228,8 @@ class VulkanRuntime:
                 families = (QueueFamilyProperties * queue_count.value)()
                 self.vkGetPhysicalDeviceQueueFamilyProperties(physical, C.byref(queue_count), families)
                 for family_index, family in enumerate(families):
-                    if family.queueCount and family.queueFlags & 2:
+                    required = getattr(self, "required_queue_flags", 2)
+                    if family.queueCount and family.queueFlags & required == required:
                         selected = physical, device_index, family_index
                         break
                 if selected:
@@ -357,8 +358,11 @@ class VulkanRuntime:
 
 def compile_shader(root, output, name, folder="examples", include_dirs=(), optimize=False):
     module = output / f"{name}.spv"
+    source = root / folder / f"{name}.pas"
+    if not source.exists():
+        source = source.with_suffix('.pasm')
     arguments = [str(root / "build/bin/PasToSPIRV.exe"), "compile",
-                 str(root / folder / f"{name}.pas"), "-o", str(module)]
+                 str(source), "-o", str(module)]
     for directory in include_dirs:
         arguments.extend(["-I", str(directory)])
     if optimize: arguments.append('-O1')

@@ -68,7 +68,9 @@ function NeedsFlowAnalysis(F: TShaderFunction): Boolean;
   var C: TStatement;
   begin
     if X = nil then Exit(False);
-    if X.Kind in [skReturn, skBreak, skContinue, skCase, skRepeat, skDeclare, skIncrement] then Exit(True);
+    if X.Kind in [skReturn, skBreak, skContinue, skCase, skRepeat, skDeclare, skIncrement,
+      skDiscard, skInterlock] then
+      Exit(True);
     if E(X.Value) or E(X.Target) or E(X.Condition) or E(X.Limit) then Exit(True);
     if S(X.ThenPart) or S(X.ElsePart) or S(X.Body) then Exit(True);
     for C in X.Children do if S(C) then Exit(True);
@@ -159,7 +161,10 @@ begin
         Edge(Head, Build(S.Body, Step, Kill, Step)); Edge(Head, Kill);
         Result := Node(nkForInit, S); Edge(Result, Head);
       end;
-    skReturn: Result := Node(nkStatement, S);
+    skReturn, skDiscard:
+      Result := Node(nkStatement, S);
+    skInterlock:
+      Result := Build(S.Body, Next, BreakTo, ContinueTo);
     skBreak: begin Result := Node(nkEmpty, S); Edge(Result, BreakTo); end;
     skContinue: begin Result := Node(nkEmpty, S); Edge(Result, ContinueTo); end;
   else Result := Node(nkStatement, S); Edge(Result, Next);

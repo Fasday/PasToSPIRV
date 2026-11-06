@@ -27,7 +27,9 @@ const
     'imageload|imagestore|imagesize|samplelevel|texture2d|sampler|' +
     'min|max|abs|clamp|dot|sqrt|singletobits|bitstosingle|doubletobits|bitstodouble|' +
     'roundeven|round|trunc|floor|ceil|isnan|isinfinite|ldexp|findmsb|findlsb|arithmeticshiftright|' +
-    'ord|sqr|odd|succ|pred|inc|dec|low|high|length|sizeof|include|exclude|';
+    'ord|sqr|odd|succ|pred|inc|dec|low|high|length|sizeof|include|exclude|' +
+    'discard|interlock|texelfetch|texturesize|combinedtexture2d|combinedtexture2duint|' +
+    'roundfloat|floorfloat|ddxfine|ddyfine|';
 
 function IsReservedIdentifier(const AName: string): Boolean;
 var

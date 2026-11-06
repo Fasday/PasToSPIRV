@@ -16,7 +16,8 @@ SPIR-V for Vulkan. This is not a Delphi-to-GPU application converter.
   It does not emulate missing native arithmetic or weaken StrictFloat.
 - Source entry procedure stays Main. Its external SPIR-V name defaults to Main;
   preserve the exact configured case in emission, reflection and project cache keys.
-- Version 1.x is a bounded compute language, not full Delphi/GLSL. Keep
+- Version 1.x is a bounded shader language, not full Delphi/GLSL. Compute remains
+  the default; explicit Vertex/Fragment stages follow docs/graphics.md. Keep
   `docs/compatibility.md` and `docs/gpu.md` in sync with accepted constructs.
 - Keep documentation and examples independent of any particular consuming
   application. This is a standalone compiler repository.
@@ -57,6 +58,9 @@ SPIR-V for Vulkan. This is not a Delphi-to-GPU application converter.
   this syntactic restriction as a proof of race freedom or termination.
 - Images/samplers are opaque descriptors, never std430 byte values. Float
   texture sampling uses explicit LOD. Check image formats/capabilities on the host.
+- Graphics interfaces are explicit 32-bit scalar/vector locations or documented
+  built-ins. Inputs are read-only; outputs are whole-value, Main-only writes.
+  Ordered pixel interlock is a structured Main-only block, never unmatched calls.
 - O1 may fold only defined integral/Boolean constants. Do not reassociate or
   fold floating-point operations or remove atomic/resource side effects.
 - Batch cache must re-resolve dependencies and check artifact hashes before hits;

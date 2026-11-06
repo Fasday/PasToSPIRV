@@ -8,7 +8,7 @@ procedure CheckProfile(AModule: TShaderModule);
 
 implementation
 
-uses PTS.Types, PTS.Diagnostics;
+uses PTS.Types, PTS.Diagnostics, PTS.Graphics;
 
 function HasType(T: TShaderType; C: TCompositeType; Wanted: TShaderType): Boolean;
   var F: TTypeField;
@@ -57,6 +57,7 @@ procedure CheckProfile(AModule: TShaderModule);
   end;
 var F: TShaderFunction; V: TShaderVariable; T: TShaderType;
 begin
+  CheckGraphics(AModule);
   for V in AModule.Resources do
   begin
     MarkType(V.DataType, V.Composite);

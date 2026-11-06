@@ -114,7 +114,7 @@ $vectorFailures = @(
     @('vector_constructor_long', 'procedure Main; var V: Single2; begin V := Single2(1,2,3); end;', 'constructor expects'),
     @('vector_constructor_five', 'procedure Main; var V: Single4; begin V := Single4(1,2,3,4,5); end;', 'at most four'),
     @('vector_constructor_bool', 'procedure Main; var V: Single3; begin V := Single3(True); end;', 'Cannot convert'),
-    @('vector_constructor_flatten', 'procedure Main; var V: Single4; begin V := Single4(Single3(1),2); end;', 'constructor expects'),
+    @('vector_constructor_component_count', 'procedure Main; var V: Single4; begin V := Single4(Single2(1),2); end;', 'constructor expects'),
     @('vector_ordered', 'procedure Main; var B: Boolean; begin B := Single3(1) < Single3(2); end;', 'Ordered comparisons'),
     @('vector_compare_width', 'procedure Main; var B: Boolean; begin B := Single3(1) = Single2(1); end;', 'matching vector widths'),
     @('vector_compare_scalar', 'procedure Main; var B: Boolean; begin B := Single3(1) = 1; end;', 'matching vector widths'),

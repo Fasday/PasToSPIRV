@@ -29,6 +29,12 @@ type
     HasVulkan12: Boolean;
     HasStrictFloat: Boolean;
     HasAliased: Boolean;
+    HasStage, HasInput, HasOutput, HasLocation, HasBuiltin: Boolean;
+    HasInterpolation, HasCoherent, HasInterlock: Boolean;
+    Stage: TShaderStage;
+    Location: Cardinal;
+    GraphicsBuiltin: TGraphicsBuiltin;
+    Interpolation: TInterpolation;
     LocalSize: array[0..2] of Cardinal;
   end;
 
@@ -174,7 +180,8 @@ const
   Names: array[TIntrinsic] of string = ('Min', 'Max', 'Abs', 'Clamp', 'Dot', 'Sqrt',
     'SingleToBits', 'BitsToSingle', 'DoubleToBits', 'BitsToDouble',
     'RoundEven', 'Round', 'Trunc', 'Floor', 'Ceil', 'IsNan', 'IsInfinite',
-    'Ldexp', 'FindMSB', 'FindLSB', 'ArithmeticShiftRight', 'Ord', 'Sqr');
+    'Ldexp', 'FindMSB', 'FindLSB', 'ArithmeticShiftRight', 'Ord', 'Sqr',
+    'RoundFloat', 'FloorFloat', 'DdxFine', 'DdyFine');
 var
   Candidate: TIntrinsic;
 begin
@@ -1058,6 +1065,69 @@ begin
         if Result.HasAliased then Fail('Duplicate Aliased attribute');
         Result.HasAliased := True;
       end
+      else if (Name = 'compute') or (Name = 'vertex') or (Name = 'fragment') then
+      begin
+        if Result.HasStage then
+          Fail('Duplicate or conflicting shader stages');
+        Result.HasStage := True;
+        if Name = 'vertex' then
+          Result.Stage := ssVertex
+        else if Name = 'fragment' then
+          Result.Stage := ssFragment
+        else
+          Result.Stage := ssCompute;
+      end
+      else if (Name = 'input') or (Name = 'output') then
+      begin
+        if Result.HasInput or Result.HasOutput then
+          Fail('Input and Output cannot be combined or repeated');
+        Result.HasInput := Name = 'input';
+        Result.HasOutput := Name = 'output';
+      end
+      else if Name = 'location' then
+      begin
+        if Result.HasLocation then
+          Fail('Duplicate Location attribute');
+        Result.HasLocation := True;
+        Expect(tkLeftParen, '"("');
+        Result.Location := ReadUInt;
+        if Result.Location > 31 then
+          Fail('Locations are limited to 0..31');
+        Expect(tkRightParen, '")"');
+      end
+      else if Name = 'builtin' then
+      begin
+        if Result.HasBuiltin then
+          Fail('Duplicate Builtin attribute');
+        Result.HasBuiltin := True;
+        Expect(tkLeftParen, '"("');
+        if not TryGraphicsBuiltin(FToken.Text, Result.GraphicsBuiltin) then
+          Fail('Unknown graphics built-in');
+        Next;
+        Expect(tkRightParen, '")"');
+      end
+      else if (Name = 'flat') or (Name = 'noperspective') then
+      begin
+        if Result.HasInterpolation then
+          Fail('Conflicting interpolation attributes');
+        Result.HasInterpolation := True;
+        if Name = 'flat' then
+          Result.Interpolation := ipFlat
+        else
+          Result.Interpolation := ipNoPerspective;
+      end
+      else if Name = 'coherent' then
+      begin
+        if Result.HasCoherent then
+          Fail('Duplicate Coherent attribute');
+        Result.HasCoherent := True;
+      end
+      else if Name = 'pixelinterlockordered' then
+      begin
+        if Result.HasInterlock then
+          Fail('Duplicate PixelInterlockOrdered attribute');
+        Result.HasInterlock := True;
+      end
       else
         Fail(Format('Unknown attribute "%s"', [Name]));
       if FToken.Kind <> tkComma then
@@ -1096,6 +1166,11 @@ begin
     Fail(Format('Shader resources are limited to %d', [MaxResources]));
   if AAttributes.HasLocalSize then
     Fail('LocalSize is only valid on procedure Main');
+  if AAttributes.HasStage or AAttributes.HasInterlock then
+    Fail('Stage and PixelInterlockOrdered attributes belong on Main');
+  if (AAttributes.HasLocation or AAttributes.HasBuiltin or AAttributes.HasInterpolation) and
+    not (AAttributes.HasInput or AAttributes.HasOutput) then
+    Fail('Location, Builtin and interpolation require Input or Output');
   if AAttributes.HasVulkan11 then
     Fail('Vulkan11 is only valid on procedure Main');
   if AAttributes.HasVulkan12 or AAttributes.HasStrictFloat then
@@ -1105,12 +1180,47 @@ begin
   FModule.Resources.Add(Variable);
   Variable.Name := Name.Text;
   Variable.Position := Name.Position;
-  if AAttributes.HasPushConstant then
+  if AAttributes.HasInput or AAttributes.HasOutput then
+  begin
+    if AAttributes.HasBinding or AAttributes.HasPushConstant or AAttributes.HasShared or
+      AAttributes.HasAccess or AAttributes.HasAliased or AAttributes.HasCoherent then
+      Fail('Stage interfaces cannot have resource attributes');
+    if AAttributes.HasLocation = AAttributes.HasBuiltin then
+      Fail('Stage interfaces require exactly one of Location or Builtin');
+    if AAttributes.HasInput then
+      Variable.Kind := vkInput
+    else
+      Variable.Kind := vkOutput;
+  end
+  else if AAttributes.HasPushConstant then
     Variable.Kind := vkPushConstant
   else
     Variable.Kind := vkBuffer;
   AddSymbol(Variable);
   Expect(tkColon, '":"');
+  if Variable.Kind in [vkInput, vkOutput] then
+  begin
+    Variable.DataType := ReadType(Variable.Composite);
+    Variable.Location := AAttributes.Location;
+    Variable.GraphicsBuiltin := AAttributes.GraphicsBuiltin;
+    Variable.Interpolation := AAttributes.Interpolation;
+    if AAttributes.HasBuiltin then
+    begin
+      if Variable.DataType <> GraphicsBuiltinType(Variable.GraphicsBuiltin) then
+        Fail('Incorrect graphics built-in type');
+      if AAttributes.HasInterpolation then
+        Fail('Built-ins cannot have interpolation attributes');
+    end
+    else if not (ComponentType(Variable.DataType) in [stInteger, stCardinal, stSingle]) then
+      Fail('Stage locations require 32-bit numeric scalars or vectors');
+    for Other in FModule.Resources do
+      if (Other <> Variable) and (Other.Kind = Variable.Kind) and
+        (((Variable.GraphicsBuiltin <> gbNone) and (Variable.GraphicsBuiltin = Other.GraphicsBuiltin)) or
+         ((Variable.GraphicsBuiltin = gbNone) and (Other.GraphicsBuiltin = gbNone) and (Variable.Location = Other.Location))) then
+        Fail('Duplicate stage interface location or built-in');
+    Expect(tkSemicolon, '";"');
+    Exit;
+  end;
   if AAttributes.HasPushConstant then
   begin
     if AAttributes.HasBinding or AAttributes.HasAccess then
@@ -1144,9 +1254,13 @@ begin
       Variable.Access := AAttributes.Access;
       Next;
     end
-    else if IsWord('Texture2D') then
+    else if IsWord('Texture2D') or IsWord('CombinedTexture2D') or IsWord('CombinedTexture2DUInt') then
     begin
-      Variable.Kind := vkTexture; Variable.DataType := stSingle4;
+      Variable.Kind := vkTexture;
+      Variable.DataType := stSingle4;
+      Variable.CombinedSampler := not IsWord('Texture2D');
+      if IsWord('CombinedTexture2DUInt') then
+        Variable.DataType := stCardinal4;
       if AAttributes.HasAccess and (AAttributes.Access <> baReadOnly) then Fail('Texture2D is read-only');
       Variable.Access := baReadOnly; Next;
     end
@@ -1190,6 +1304,12 @@ begin
   begin
     if Variable.Kind <> vkBuffer then Fail('Aliased is only valid on storage buffers');
     Variable.Aliased := True;
+  end;
+  if AAttributes.HasCoherent then
+  begin
+    if Variable.Kind <> vkImage then
+      Fail('Coherent is only valid on storage images');
+    Variable.Coherent := True;
   end;
   Expect(tkSemicolon, '";"');
 end;
@@ -1305,6 +1425,9 @@ begin
   begin
     if AAttributes.HasBinding or AAttributes.HasAccess or AAttributes.HasPushConstant or AAttributes.HasShared or AAttributes.HasAliased then
       Fail('Only LocalSize is valid on procedure Main');
+    if AAttributes.HasInput or AAttributes.HasOutput or AAttributes.HasLocation or
+      AAttributes.HasBuiltin or AAttributes.HasInterpolation or AAttributes.HasCoherent then
+      Fail('Interface and resource attributes cannot be applied to Main');
     ExpectWord('procedure');
     Name := FToken;
     ExpectWord('Main');
@@ -1312,6 +1435,9 @@ begin
     FModule.Extended := AAttributes.HasVulkan11 or AAttributes.HasVulkan12;
     FModule.Vulkan11 := AAttributes.HasVulkan11;
     FModule.StrictFloat := AAttributes.HasStrictFloat;
+    FModule.Stage := AAttributes.Stage;
+    FModule.PixelInterlock := AAttributes.HasInterlock;
+    FModule.HasLocalSize := AAttributes.HasLocalSize;
     if AAttributes.HasLocalSize then
       for I := 0 to 2 do
         FModule.LocalSize[I] := AAttributes.LocalSize[I];
@@ -1835,6 +1961,24 @@ begin
           else Convert(Result.Value, Result.Target.DataType);
         end;
         Expect(tkRightParen, '")"');
+      end
+      else if IsWord('Discard') then
+      begin
+        Result.Kind := skDiscard;
+        Next;
+      end
+      else if IsWord('Interlock') then
+      begin
+        if (FCurrentFunction <> FModule.EntryPoint) or (FControlDepth <> 0) then
+          Fail('Interlock must be at Main scope, outside control constructs');
+        if FModule.UsesInterlock then
+          Fail('Only one Interlock block is supported');
+        FModule.UsesInterlock := True;
+        Result.Kind := skInterlock;
+        Next;
+        if not IsWord('begin') then
+          Fail('Interlock requires a begin/end block');
+        Result.Body := ParseControlledStatement;
       end
       else if IsWord('Exit') then
       begin
@@ -2891,7 +3035,7 @@ function TParser.ParseConstruct(AType: TShaderType): TExpression;
 var
   Arguments: TArray<TExpression>;
   Position: TSourcePosition;
-  Count, I, Width: Integer;
+  Count, I, Width, Components: Integer;
 begin
   Result := nil;
   SetLength(Arguments, 4);
@@ -2912,7 +3056,14 @@ begin
           Next;
         until False;
       Expect(tkRightParen, '")"');
-      if (Count <> 1) and (Count <> Width) then
+      Components := 0;
+      for I := 0 to Count - 1 do
+      begin
+        if (Count > 1) and not IsNumericType(Arguments[I].DataType) then
+          Fail('Vector constructors require numeric components');
+        Inc(Components, ComponentCount(Arguments[I].DataType));
+      end;
+      if (Count <> 1) and (Components <> Width) then
         raise EShaderError.Create(Position, Format('%s constructor expects 1 or %d arguments',
           [ShaderTypeName(AType), Width]));
       if (Count = 1) and ((Width = 1) or (ComponentCount(Arguments[0].DataType) > 1)) then
@@ -2929,7 +3080,7 @@ begin
         Result.DataType := AType;
         for I := 0 to Count - 1 do
         begin
-          Convert(Arguments[I], ComponentType(AType), True);
+          Convert(Arguments[I], VectorType(ComponentType(AType), ComponentCount(Arguments[I].DataType)), True);
           Result.Depth := Max(Result.Depth, Arguments[I].Depth + 1);
           Result.Arguments.Add(Arguments[I]);
           Arguments[I] := nil;
@@ -3098,9 +3249,29 @@ begin
         end;
       inArithmeticShiftRight:
         begin
-          if not IsSignedInteger(T) or (ComponentCount(T) <> 1) then Fail('ArithmeticShiftRight requires a signed scalar');
-          if not IsScalarIntegerType(Result.Arguments[1].DataType) then Fail('Shift count must be an integer');
+          if not IsSignedInteger(T) then
+            Fail('ArithmeticShiftRight requires a signed integer');
+          if not IsIntegerType(Result.Arguments[1].DataType) then
+            Fail('Shift count must be an integer');
+          if (ComponentCount(T) > 1) and (ScalarBitWidth(Result.Arguments[1].DataType) <> 32) then
+            Fail('Vector shift counts must be 32-bit integers');
+          if ComponentCount(Result.Arguments[1].DataType) = 1 then
+          begin
+            A := Result.Arguments.Extract(Result.Arguments[1]);
+            try
+              Splat(A, ComponentCount(T));
+              Result.Arguments.Add(A);
+            except
+              A.Free;
+              raise;
+            end;
+          end
+          else if ComponentCount(Result.Arguments[1].DataType) <> ComponentCount(T) then
+            Fail('Shift vector widths must agree');
         end;
+      inRoundFloat, inFloorFloat, inDdxFine, inDdyFine:
+        if not (ComponentType(T) = stSingle) then
+          Fail('Graphics floating intrinsics require Single scalars or vectors');
       inOrd:
         if T = stBoolean then Result.DataType := stInteger
         else if IsScalarIntegerType(T) then
@@ -3453,7 +3624,8 @@ begin
   if IsWord('Low') or IsWord('High') or IsWord('Length') or IsWord('SizeOf') or
     IsWord('Odd') or IsWord('Succ') or IsWord('Pred') then Exit(ParseBuiltin);
   if IsWord('AtomicAdd') or IsWord('AtomicExchange') or IsWord('AtomicCompareExchange') then Exit(ParseAtomic);
-  if IsWord('ImageLoad') or IsWord('ImageSize') or IsWord('SampleLevel') then Exit(ParseImageOperation);
+  if IsWord('ImageLoad') or IsWord('ImageSize') or IsWord('SampleLevel') or
+    IsWord('TexelFetch') or IsWord('TextureSize') then Exit(ParseImageOperation);
   Owner := ReadOwnerPrefix;
   if (Owner = '') and (FFunctions.ContainsKey(SymbolKey(CurrentOwner, FToken.Text)) or
     FNamedTypes.ContainsKey(SymbolKey(CurrentOwner, FToken.Text)) or FConstants.ContainsKey(SymbolKey(CurrentOwner, FToken.Text))) then
@@ -3620,12 +3792,48 @@ begin
   try
     Next; Expect(tkLeftParen, '"("');
     Result.Variable := ReadResource;
-    if Name = 'samplelevel' then
+    if (Name = 'texelfetch') or (Name = 'texturesize') then
+    begin
+      if Result.Variable.Kind <> vkTexture then
+        Fail('Texture operations require a texture resource');
+      if Name = 'texelfetch' then
+      begin
+        Result.Kind := ekTexelFetch;
+        Result.DataType := Result.Variable.DataType;
+        Expect(tkComma, '","');
+        Argument := ParseExpression;
+        Result.Arguments.Add(Argument);
+        if not (Argument.DataType in [stInteger2, stCardinal2]) then
+          Fail('TexelFetch coordinates must be Integer2 or Cardinal2');
+      end
+      else
+      begin
+        Result.Kind := ekTextureSize;
+        Result.DataType := stInteger2;
+      end;
+      Expect(tkComma, '","');
+      Argument := ParseExpression;
+      try
+        Convert(Argument, stInteger);
+      except
+        Argument.Free;
+        raise;
+      end;
+      Result.Arguments.Add(Argument);
+    end
+    else if Name = 'samplelevel' then
     begin
       if Result.Variable.Kind <> vkTexture then Fail('SampleLevel requires Texture2D');
+      if Result.Variable.DataType <> stSingle4 then
+        Fail('SampleLevel requires a floating-point texture');
       Result.Kind := ekSampleLevel; Result.DataType := stSingle4;
-      Expect(tkComma, '","'); Result.Sampler := ReadResource;
-      if Result.Sampler.Kind <> vkSampler then Fail('Expected a Sampler resource');
+      if not Result.Variable.CombinedSampler then
+      begin
+        Expect(tkComma, '","');
+        Result.Sampler := ReadResource;
+        if Result.Sampler.Kind <> vkSampler then
+          Fail('Expected a Sampler resource');
+      end;
       Expect(tkComma, '","'); Argument := ParseExpression;
       try Convert(Argument, stSingle2); except Argument.Free; raise; end;
       Result.Arguments.Add(Argument);
@@ -3994,6 +4202,16 @@ begin
     Next;
     case Variable.Kind of
       vkShared: Result.Kind := ekLocal;
+      vkInput, vkOutput:
+        begin
+          Result.Kind := ekLocal;
+          if AForWrite and (Variable.Kind = vkInput) then
+            Fail('Stage inputs are read-only');
+          if AForWrite and (Variable.Kind = vkOutput) and (FCurrentFunction <> FModule.EntryPoint) then
+            Fail('Stage outputs may only be assigned in Main');
+          if not AForWrite and (Variable.Kind = vkOutput) then
+            Fail('Stage outputs are write-only; use a local intermediate');
+        end;
       vkImage, vkTexture, vkSampler: Fail('Opaque resources require ImageLoad/ImageStore/ImageSize/SampleLevel');
       vkLocal, vkParameter, vkResult:
         begin
@@ -4102,6 +4320,8 @@ begin
       raise EShaderError.Create(Node.Position, 'Cannot write through a swizzle; select components of the variable');
     Node := Node.Left;
   end;
+  if (Node.Variable <> nil) and (Node.Variable.Kind = vkOutput) and (ATarget <> Node) then
+    raise EShaderError.Create(ATarget.Position, 'Assign stage outputs as whole values');
 end;
 
 procedure TParser.ParseLibraries;

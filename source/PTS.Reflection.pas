@@ -59,7 +59,7 @@ var
   Document: TSourceDocument;
   Edge: TSourceDependency;
   Sources, Modules, Dependencies: TJSONArray;
-  Images, Textures, Samplers, Shared: TJSONArray;
+  Images, Textures, Samplers, Shared, Inputs, Outputs: TJSONArray;
   Required, RequiredExtensions: TJSONArray;
 begin
   Root := TJSONObject.Create;
@@ -70,19 +70,19 @@ begin
     Root.AddPair('language_version','1.3');
     if AModule.Vulkan11 then
     begin
-      Root.AddPair('profile', 'compute-vulkan1.1');
+      Root.AddPair('profile', ShaderStageName(AModule.Stage) + '-vulkan1.1');
       Root.AddPair('target_env', 'vulkan1.1');
       Root.AddPair('spirv_version', '1.3');
     end
     else if AModule.Extended then
     begin
-      Root.AddPair('profile','compute-vulkan1.2');
+      Root.AddPair('profile', ShaderStageName(AModule.Stage) + '-vulkan1.2');
       Root.AddPair('target_env', 'vulkan1.2');
       Root.AddPair('spirv_version', '1.3');
     end
     else
     begin
-      Root.AddPair('profile','compute-vulkan1.0');
+      Root.AddPair('profile', ShaderStageName(AModule.Stage) + '-vulkan1.0');
       Root.AddPair('target_env', 'vulkan1.0');
       Root.AddPair('spirv_version', '1.0');
     end;
@@ -101,16 +101,21 @@ begin
     if AModule.Storage16 then Required.Add('storageBuffer16BitAccess');
     if AModule.Push8 then Required.Add('storagePushConstant8');
     if AModule.Push16 then Required.Add('storagePushConstant16');
-    if AModule.Vulkan11 then
+    if AModule.Vulkan11 or AModule.PixelInterlock then
     begin
       RequiredExtensions := TJSONArray.Create;
       Root.AddPair('required_device_extensions', RequiredExtensions);
-      if stByte in AModule.UsedTypes then
+      if AModule.Vulkan11 and (stByte in AModule.UsedTypes) then
         RequiredExtensions.Add('VK_KHR_shader_float16_int8');
-      if AModule.Storage8 or AModule.Push8 then
+      if AModule.Vulkan11 and (AModule.Storage8 or AModule.Push8) then
         RequiredExtensions.Add('VK_KHR_8bit_storage');
-      if AModule.StrictFloat then
+      if AModule.Vulkan11 and AModule.StrictFloat then
         RequiredExtensions.Add('VK_KHR_shader_float_controls');
+      if AModule.PixelInterlock then
+      begin
+        RequiredExtensions.Add('VK_EXT_fragment_shader_interlock');
+        Required.Add('fragmentShaderPixelInterlock');
+      end;
     end;
     Root.AddPair('strict_float', TJSONBool.Create(AModule.StrictFloat));
     if AModule.StrictFloat then
@@ -124,7 +129,7 @@ begin
       end;
     end;
     if AOptimize then Root.AddPair('optimization','O1-safe-integer') else Root.AddPair('optimization','O0');
-    Root.AddPair('stage', 'compute');
+    Root.AddPair('stage', ShaderStageName(AModule.Stage));
     Root.AddPair('entry_point', AModule.EntryPointName);
     Root.AddPair('layout', 'std430');
     Root.AddPair('workgroup_memory_bytes', TJSONNumber.Create(AModule.SharedBytes));
@@ -133,6 +138,25 @@ begin
     Textures := TJSONArray.Create; Root.AddPair('textures', Textures);
     Samplers := TJSONArray.Create; Root.AddPair('samplers', Samplers);
     Shared := TJSONArray.Create; Root.AddPair('shared', Shared);
+    Inputs := nil;
+    Outputs := nil;
+    if AModule.Stage <> ssCompute then
+    begin
+      Inputs := TJSONArray.Create;
+      Root.AddPair('inputs', Inputs);
+      Outputs := TJSONArray.Create;
+      Root.AddPair('outputs', Outputs);
+      Root.AddPair('pixel_interlock_ordered', TJSONBool.Create(AModule.PixelInterlock));
+      for Variable in AModule.Resources do
+        if (Variable.Kind in [vkImage, vkBuffer]) and (Variable.Access <> baReadOnly) then
+        begin
+          if AModule.Stage = ssFragment then
+            Required.Add('fragmentStoresAndAtomics')
+          else
+            Required.Add('vertexPipelineStoresAndAtomics');
+          Break;
+        end;
+    end;
     if ASources <> nil then
     begin
       Sources := TJSONArray.Create;
@@ -169,7 +193,8 @@ begin
     end;
     LocalSize := TJSONArray.Create;
     Root.AddPair('local_size', LocalSize);
-    for I := 0 to 2 do LocalSize.Add(AModule.LocalSize[I]);
+    if AModule.Stage = ssCompute then
+      for I := 0 to 2 do LocalSize.Add(AModule.LocalSize[I]);
     Types := TJSONArray.Create;
     Root.AddPair('types', Types);
     for Composite in AModule.Types do
@@ -205,6 +230,30 @@ begin
     begin
       Item := TJSONObject.Create;
       Item.AddPair('name', Variable.Name);
+      if Variable.Kind in [vkInput, vkOutput] then
+      begin
+        if Variable.Kind = vkInput then
+          Inputs.AddElement(Item)
+        else
+          Outputs.AddElement(Item);
+        Item.AddPair('type', ShaderTypeName(Variable.DataType));
+        if Variable.GraphicsBuiltin <> gbNone then
+          Item.AddPair('builtin', GraphicsBuiltinName(Variable.GraphicsBuiltin))
+        else
+        begin
+          Item.AddPair('location', TJSONNumber.Create(Variable.Location));
+          case Variable.Interpolation of
+            ipFlat:
+              AccessName := 'flat';
+            ipNoPerspective:
+              AccessName := 'noperspective';
+          else
+            AccessName := 'smooth';
+          end;
+          Item.AddPair('interpolation', AccessName);
+        end;
+        Continue;
+      end;
       if Variable.Kind = vkShared then
       begin
         Shared.AddElement(Item);
@@ -228,8 +277,19 @@ begin
           case Variable.Access of baReadOnly: AccessName := 'read_only'; baWriteOnly: AccessName := 'write_only';
           else AccessName := 'read_write'; end;
           Item.AddPair('access', AccessName);
+          if Variable.Coherent then
+            Item.AddPair('coherent', TJSONBool.Create(True));
         end
-        else if Variable.Kind = vkTexture then Item.AddPair('descriptor_type', 'sampled_image')
+        else if Variable.Kind = vkTexture then
+        begin
+          if Variable.CombinedSampler then
+          begin
+            Item.AddPair('descriptor_type', 'combined_image_sampler');
+            Item.AddPair('value_type', ShaderTypeName(Variable.DataType));
+          end
+          else
+            Item.AddPair('descriptor_type', 'sampled_image');
+        end
         else Item.AddPair('descriptor_type', 'sampler');
         Continue;
       end;
@@ -258,7 +318,7 @@ begin
         Item.AddPair('offset', TJSONNumber.Create(0));
         Item.AddPair('size', TJSONNumber.Create(Int64(Variable.Composite.Size)));
         Item.AddPair('alignment', TJSONNumber.Create(Int64(Variable.Composite.Alignment)));
-        Item.AddPair('stage', 'compute');
+        Item.AddPair('stage', ShaderStageName(AModule.Stage));
         Item.AddPair('members', DescribeMembers(Variable.Composite));
       end;
     end;

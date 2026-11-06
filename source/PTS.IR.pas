@@ -14,7 +14,7 @@ const
 
 type
   TVariableKind = (vkLocal, vkBuffer, vkPushConstant, vkParameter, vkResult,
-    vkShared, vkImage, vkTexture, vkSampler, vkConstant);
+    vkShared, vkImage, vkTexture, vkSampler, vkConstant, vkInput, vkOutput);
   TBufferAccess = (baReadOnly, baWriteOnly, baReadWrite);
   TParameterMode = (pmValue, pmConst, pmVar, pmOut);
 
@@ -35,6 +35,10 @@ type
     ActiveFor: Boolean;
     ParameterMode: TParameterMode;
     ImageFormat: TImageFormat;
+    CombinedSampler, Coherent: Boolean;
+    Location: Cardinal;
+    GraphicsBuiltin: TGraphicsBuiltin;
+    Interpolation: TInterpolation;
     // Locals/parameters/Result: the declaring function (non-owning).
     Owner: TShaderFunction;
     // Used by a nested routine: stored in Private (per-invocation) memory, which
@@ -52,7 +56,8 @@ type
     ekSwizzle,      // Left.XY..: MemberIndex = count, Bits = 2-bit component indices
     ekConditional,  // if Arguments[0] then Left else Right (only one branch evaluated)
     ekInSet,        // Left in [Arguments]: values or ekRange items, Left evaluated once
-    ekRange);       // Left..Right inside ekInSet
+    ekRange,        // Left..Right inside ekInSet
+    ekTexelFetch, ekTextureSize);
   TAtomicKind = (akAdd, akExchange, akCompareExchange);
   TBarrierKind = (bkWorkgroup, bkBuffer, bkImage);
   TIntrinsic = (inMin, inMax, inAbs, inClamp, inDot, inSqrt,
@@ -60,7 +65,8 @@ type
     inRoundEven, inRound, inTrunc, inFloor, inCeil, inIsNan, inIsInfinite,
     inLdexp, inFindMSB, inFindLSB, inArithmeticShiftRight,
     inOrd,   // Ord(Boolean) -> Integer 0/1
-    inSqr);  // Sqr(X) = X * X with X evaluated once
+    inSqr,   // Sqr(X) = X * X with X evaluated once
+    inRoundFloat, inFloorFloat, inDdxFine, inDdyFine);
   TOperator = (opNone, opNegate, opNot, opAdd, opSubtract, opMultiply,
     opDivide, opIntDivide, opModulo, opEqual, opNotEqual, opLess,
     opLessEqual, opGreater, opGreaterEqual, opAnd, opOr, opXor,
@@ -100,7 +106,8 @@ type
   TStatementKind = (skBlock, skAssign, skIf, skWhile, skFor, skEvaluate, skBarrier,
     skReturn, skBreak, skContinue, skCase, skRepeat,
     skDeclare,     // inline var: Target, optional initializer Value
-    skIncrement);  // Inc/Dec/Include/Exclude: Target := Target <Operation> Value, one address
+    skIncrement,   // Inc/Dec/Include/Exclude: Target := Target <Operation> Value, one address
+    skDiscard, skInterlock);
   TStatement = class
   public
     Kind: TStatementKind;
@@ -153,6 +160,9 @@ type
     Functions: TObjectList<TShaderFunction>;
     EntryPoint: TShaderFunction; // Non-owning; also in Functions.
     EntryPointName: string; // External SPIR-V name; the source procedure remains Main.
+    Stage: TShaderStage;
+    PixelInterlock, UsesInterlock, HasLocalSize: Boolean;
+    UsesDerivatives: Boolean;
     LocalSize: array[0..2] of Cardinal;
     SharedBytes: Cardinal;
     UsesWorkgroupBarrier: Boolean;

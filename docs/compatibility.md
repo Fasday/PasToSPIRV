@@ -1,6 +1,6 @@
-# Контракт compute-языка 1.x
+# Контракт shader-языка 1.x
 
-PasToSPIRV — самостоятельный **ограниченный compute-компилятор**. Номер 1.x
+PasToSPIRV — самостоятельный **ограниченный shader-компилятор**. Номер 1.x
 фиксирует перечисленный ниже профиль, а не означает полноту Delphi, GLSL, всех
 Vulkan-возможностей или готовый runtime для приложений.
 
@@ -8,6 +8,8 @@ Vulkan-возможностей или готовый runtime для прило�
 
 - Source language 1.3: подмножество в `language.md`, `extended.md`, `modules.md`, `gpu.md`.
 - Default target: SPIR-V 1.0 / Vulkan 1.0, compute entry Main.
+  Explicit `[Vertex]`/`[Fragment]`: documented scalar/vector interfaces and operations
+  in [graphics.md](graphics.md); compute built-ins/shared/LocalSize do not cross stages.
   С 1.3.3 внешнее имя SPIR-V можно задать через `--entry-point` / project `entry_point` /
   последний параметр API `AEntryPointName`; исходная процедура остаётся `Main`.
   По умолчанию ничего не меняется. Хост использует reflection `entry_point` как `pName`.
@@ -44,7 +46,8 @@ memory requirements и synchronization. Нет автоматической за
 Нет Delphi classes/strings/interfaces/exceptions/heap, полноценных Delphi units,
 рекурсии, `with`, методов/операторов записей, вариантных записей,
 матриц, nonzero array lower bounds, image arrays/depth/cube/MSAA,
-64-bit/float atomics, integer sampled textures и других shader stages.
+64-bit/float atomics, geometry/tessellation/mesh stages и implicit-LOD sampling.
+CombinedTexture2DUInt supports unsigned texel fetch, not filtered integer sampling.
 Shared — одномерные scalar arrays; workgroup Barrier — только без if/loops в Main.
 Добавлены helper procedures, Exit/Break/Continue/repeat/case, constant array tables
 и optional Vulkan12 var/out. Ссылки только на function-local lvalues; доступ к

@@ -60,7 +60,8 @@ class GPUImage:
         if properties.optimal & required != required:
             raise RuntimeError(f"Device does not support format {self.format} for this image usage")
         info = ImageCreateInfo(sType=14, imageType=1, format=self.format, extent=Extent3D(self.width,self.height,1),
-                              mipLevels=1, arrayLayers=1, samples=1, usage=3 | (4 if sampled else 8))
+                              mipLevels=1, arrayLayers=1, samples=1,
+                              usage=spec.get("usage", 3 | (4 if sampled else 8)))
         checked(runtime.vkCreateImage(runtime.device, C.byref(info), None, C.byref(self.image)), "vkCreateImage")
         requirements = MemoryRequirements()
         runtime.vkGetImageMemoryRequirements(runtime.device, self.image, C.byref(requirements))
@@ -113,7 +114,8 @@ class ImageRuntime(VulkanRuntime):
             images = {x["name"]: GPUImage(self,image_specs[x["name"]],False,cleanup) for x in meta["images"]}
             images.update({x["name"]: GPUImage(self,image_specs[x["name"]],True,cleanup) for x in meta["textures"]})
             samplers = {}
-            for item in meta["samplers"]:
+            combined = [x for x in meta["textures"] if x["descriptor_type"] == "combined_image_sampler"]
+            for item in meta["samplers"] + combined:
                 if linear:
                     for image in images.values():
                         if image.sampled:
@@ -122,7 +124,7 @@ class ImageRuntime(VulkanRuntime):
                             if not properties.optimal & 0x1000: raise RuntimeError('Format does not support linear sampling')
                 info = SamplerCreateInfo(sType=31, magFilter=int(linear), minFilter=int(linear), addressModeU=2,addressModeV=2,addressModeW=2,maxAnisotropy=1)
                 samplers[item["name"]] = self.create("Sampler",info,cleanup)
-            kinds = {"storage_buffer":7,"storage_image":3,"sampled_image":2,"sampler":0}
+            kinds = {"storage_buffer":7,"storage_image":3,"sampled_image":2,"sampler":0,"combined_image_sampler":1}
             bindings = (LayoutBinding * len(resources))(*(
                 LayoutBinding(binding=x["binding"],descriptorType=kinds[x["descriptor_type"]],descriptorCount=1,stageFlags=0x20)
                 for x in resources))
@@ -155,6 +157,7 @@ class ImageRuntime(VulkanRuntime):
                     info = DescriptorImageInfo()
                     if kind == 0: info.sampler = samplers[name]
                     else: info.imageView, info.imageLayout = images[name].view.value, images[name].layout
+                    if kind == 1: info.sampler = samplers[name]
                     write.pImageInfo = C.cast(C.pointer(info),PTR)
                 infos.append(info); writes.append(write)
             write_array = (WriteDescriptorSet * len(writes))(*writes)

@@ -44,6 +44,8 @@ type
     FInvocationIDs: array[TInvocationBuiltin] of Cardinal;
     FImageTypes: array[TImageFormat] of Cardinal;
     FTextureType, FSamplerType, FSampledType: Cardinal;
+    FUIntTextureType, FUIntSampledType: Cardinal;
+    FInterfaceIDs: TArray<Cardinal>;
     FResourceTypes: TDictionary<TShaderVariable, Cardinal>;
     // Workgroup storage must not carry Offset/ArrayStride (VUID-StandaloneSpirv-None-10684).
     FSharedTwins: TDictionary<TCompositeType, Cardinal>;
@@ -357,9 +359,17 @@ begin
   if (AExpression.Kind = ekLocal) and FReferences.TryGetValue(AExpression.Variable, Binding) then
     Exit(Binding.Shape.RootStorage);
   case AExpression.Kind of
-    ekLocal: if AExpression.Variable.Kind = vkShared then Result := 4
-      else if (AExpression.Variable.Kind = vkConstant) or AExpression.Variable.Captured then Result := 6
-      else Result := StorageFunction;
+    ekLocal:
+      if AExpression.Variable.Kind = vkInput then
+        Result := StorageInput
+      else if AExpression.Variable.Kind = vkOutput then
+        Result := 3
+      else if AExpression.Variable.Kind = vkShared then
+        Result := 4
+      else if (AExpression.Variable.Kind = vkConstant) or AExpression.Variable.Captured then
+        Result := 6
+      else
+        Result := StorageFunction;
     ekBufferElement: Result := BufferStorage;
     ekPushConstant: Result := StoragePushConstant;
     ekField, ekIndex, ekComponent: Result := StorageClass(AExpression.Left);
@@ -491,17 +501,41 @@ var
   UserType: Cardinal;
   B: TInvocationBuiltin;
 begin
-  for B := Low(TInvocationBuiltin) to High(TInvocationBuiltin) do
-  begin
-    PointerID := PointerType(FTypes[BuiltinType(B)], StorageInput);
-    VariableID := NewID; FInvocationIDs[B] := VariableID;
-    Emit(FGlobals, 59, [PointerID, VariableID, StorageInput]);
-    Emit(FAnnotations, 71, [VariableID, 11, BuiltinDecoration(B)]);
-    Name(VariableID, BuiltinName(B));
-  end;
+  if FModule.Stage = ssCompute then
+    for B := Low(TInvocationBuiltin) to High(TInvocationBuiltin) do
+    begin
+      PointerID := PointerType(FTypes[BuiltinType(B)], StorageInput);
+      VariableID := NewID;
+      FInvocationIDs[B] := VariableID;
+      Emit(FGlobals, 59, [PointerID, VariableID, StorageInput]);
+      Emit(FAnnotations, 71, [VariableID, 11, BuiltinDecoration(B)]);
+      Name(VariableID, BuiltinName(B));
+    end;
   FInvocationID := FInvocationIDs[biGlobalInvocationID];
   for Variable in FModule.Resources do
   begin
+    if Variable.Kind in [vkInput, vkOutput] then
+    begin
+      if Variable.Kind = vkInput then
+        UserType := StorageInput
+      else
+        UserType := 3;
+      PointerID := PointerType(FTypes[Variable.DataType], UserType);
+      VariableID := NewID;
+      FVariables.Add(Variable, VariableID);
+      FInterfaceIDs := FInterfaceIDs + [VariableID];
+      Emit(FGlobals, 59, [PointerID, VariableID, UserType]);
+      if Variable.GraphicsBuiltin <> gbNone then
+        Emit(FAnnotations, 71, [VariableID, 11, GraphicsBuiltinDecoration(Variable.GraphicsBuiltin)])
+      else
+        Emit(FAnnotations, 71, [VariableID, 30, Variable.Location]);
+      if Variable.Interpolation = ipFlat then
+        Emit(FAnnotations, 71, [VariableID, 14]);
+      if Variable.Interpolation = ipNoPerspective then
+        Emit(FAnnotations, 71, [VariableID, 13]);
+      Name(VariableID, Variable.Name);
+      Continue;
+    end;
     if Variable.Kind = vkShared then
     begin
       PointerID := PointerType(SharedTypeID(Variable), 4);
@@ -522,13 +556,34 @@ begin
       end
       else if Variable.Kind = vkTexture then
       begin
-        if FTextureType = 0 then
+        if Variable.DataType = stCardinal4 then
         begin
-          FTextureType := NewID;
-          Emit(FGlobals, 25, [FTextureType, FTypes[stSingle], 1, 0, 0, 0, 1, 0]);
-          FSampledType := NewID; Emit(FGlobals, 27, [FSampledType, FTextureType]);
+          if FUIntTextureType = 0 then
+          begin
+            FUIntTextureType := NewID;
+            Emit(FGlobals, 25, [FUIntTextureType, FTypes[stCardinal], 1, 0, 0, 0, 1, 0]);
+            FUIntSampledType := NewID;
+            Emit(FGlobals, 27, [FUIntSampledType, FUIntTextureType]);
+          end;
+          if Variable.CombinedSampler then
+            UserType := FUIntSampledType
+          else
+            UserType := FUIntTextureType;
+        end
+        else
+        begin
+          if FTextureType = 0 then
+          begin
+            FTextureType := NewID;
+            Emit(FGlobals, 25, [FTextureType, FTypes[stSingle], 1, 0, 0, 0, 1, 0]);
+            FSampledType := NewID;
+            Emit(FGlobals, 27, [FSampledType, FTextureType]);
+          end;
+          if Variable.CombinedSampler then
+            UserType := FSampledType
+          else
+            UserType := FTextureType;
         end;
-        UserType := FTextureType;
       end
       else
       begin
@@ -544,6 +599,8 @@ begin
       begin
         if Variable.Access = baReadOnly then Emit(FAnnotations, 71, [VariableID, 24]);
         if Variable.Access = baWriteOnly then Emit(FAnnotations, 71, [VariableID, 25]);
+        if Variable.Coherent then
+          Emit(FAnnotations, 71, [VariableID, 23]);
       end;
       Name(VariableID, Variable.Name); Continue;
     end;
@@ -801,7 +858,10 @@ begin
       Result := EmitInSet(AExpression);
     ekConstruct:
       begin
-        SetLength(Operands, ComponentCount(AExpression.DataType) + 2);
+        if AExpression.Arguments.Count = 1 then
+          SetLength(Operands, ComponentCount(AExpression.DataType) + 2)
+        else
+          SetLength(Operands, AExpression.Arguments.Count + 2);
         Operands[0] := ValueTypeID(AExpression.DataType, AExpression.Composite);
         Result := NewID;
         Operands[1] := Result;
@@ -914,7 +974,7 @@ begin
         Result := NewID;
         Emit(FCode, 68, [FTypes[stCardinal], Result, FVariables[AExpression.Variable], 0]); // OpArrayLength
       end;
-    ekAtomic, ekImageLoad, ekImageStore, ekImageSize, ekSampleLevel:
+    ekAtomic, ekImageLoad, ekImageStore, ekImageSize, ekSampleLevel, ekTexelFetch, ekTextureSize:
       Result := EmitGPUExpression(AExpression);
   else
     raise EInvalidOpException.Create('Internal error: unsupported expression');
@@ -1153,6 +1213,38 @@ begin
     Exit;
   end;
   Image := LoadOpaque(AExpression.Variable);
+  if AExpression.Kind in [ekTexelFetch, ekTextureSize] then
+  begin
+    if AExpression.Variable.CombinedSampler then
+    begin
+      A := NewID;
+      if AExpression.Variable.DataType = stCardinal4 then
+        B := FUIntTextureType
+      else
+        B := FTextureType;
+      Emit(FCode, 100, [B, A, Image]);
+      Image := A;
+    end;
+    if AExpression.Kind = ekTextureSize then
+    begin
+      if not FImageQueryUsed then
+      begin
+        Emit(FCapabilities, 17, [50]);
+        FImageQueryUsed := True;
+      end;
+      Lod := EmitExpression(AExpression.Arguments[0]);
+      Result := NewID;
+      Emit(FCode, 103, [FTypes[stInteger2], Result, Image, Lod]);
+    end
+    else
+    begin
+      Coordinate := EmitExpression(AExpression.Arguments[0]);
+      Lod := EmitExpression(AExpression.Arguments[1]);
+      Result := NewID;
+      Emit(FCode, 95, [FTypes[AExpression.DataType], Result, Image, Coordinate, 2, Lod]);
+    end;
+    Exit;
+  end;
   if AExpression.Kind = ekImageSize then
   begin
     if not FImageQueryUsed then begin Emit(FCapabilities, 17, [50]); FImageQueryUsed := True; end;
@@ -1166,8 +1258,14 @@ begin
   end;
   if AExpression.Kind = ekSampleLevel then
   begin
-    SamplerID := LoadOpaque(AExpression.Sampler); Sampled := NewID;
-    Emit(FCode, 86, [FSampledType, Sampled, Image, SamplerID]);
+    if AExpression.Variable.CombinedSampler then
+      Sampled := Image
+    else
+    begin
+      SamplerID := LoadOpaque(AExpression.Sampler);
+      Sampled := NewID;
+      Emit(FCode, 86, [FSampledType, Sampled, Image, SamplerID]);
+    end;
     Lod := EmitExpression(AExpression.Arguments[1]); Result := NewID;
     Emit(FCode, 88, [FTypes[stSingle4], Result, Sampled, Coordinate, 2, Lod]); Exit;
   end;
@@ -1251,6 +1349,24 @@ begin
   T := AExpression.Arguments[0].DataType;
   Result := NewID;
   case AExpression.Intrinsic of
+    inDdxFine, inDdyFine:
+      begin
+        if AExpression.Intrinsic = inDdxFine then
+          Instruction := 210
+        else
+          Instruction := 211;
+        Emit(FCode, Instruction, [FTypes[T], Result, A]);
+        Exit;
+      end;
+    inRoundFloat, inFloorFloat:
+      begin
+        if AExpression.Intrinsic = inRoundFloat then
+          Instruction := 1
+        else
+          Instruction := 8;
+        Emit(FCode, 12, [FTypes[T], Result, GLSL450, Instruction, A]);
+        Exit;
+      end;
     inSingleToBits, inBitsToSingle, inDoubleToBits, inBitsToDouble:
       begin Emit(FCode, 124, [FTypes[AExpression.DataType], Result, A]); Exit; end;
     inIsNan, inIsInfinite:
@@ -1351,6 +1467,17 @@ begin
         FTerminated := True;
       end;
     skBreak: Branch(FBreakTargets.Peek);
+    skDiscard:
+      begin
+        Emit(FCode, 252, []);
+        FTerminated := True;
+      end;
+    skInterlock:
+      begin
+        Emit(FCode, 5364, []);
+        EmitStatement(AStatement.Body);
+        Emit(FCode, 5365, []);
+      end;
     skContinue: Branch(FContinueTargets.Peek);
     skCase: EmitCase(AStatement);
     skRepeat: EmitRepeat(AStatement);
@@ -1647,8 +1774,17 @@ var
   FunctionID: Cardinal;
   Words: TList<Cardinal>;
   I: Integer;
+  Variable: TShaderVariable;
+  ExecutionModel: Cardinal;
 begin
   Emit(FCapabilities, 17, [1]); // Capability Shader
+  if FModule.PixelInterlock then
+  begin
+    EmitString(FExtensions, 10, [], 'SPV_EXT_fragment_shader_interlock', []);
+    Emit(FCapabilities, 17, [5378]);
+  end;
+  if FModule.UsesDerivatives then
+    Emit(FCapabilities, 17, [51]);
   if FModule.Storage8 or FModule.Push8 then
   begin
     EmitString(FExtensions, 10, [], 'SPV_KHR_8bit_storage', []);
@@ -1679,7 +1815,25 @@ begin
     else Name(FunctionID, ShaderFunction.Name);
   end;
   FMainID := FFunctionIDs[FModule.EntryPoint];
-  EmitString(FEntryPoints, 15, [5, FMainID], FModule.EntryPointName, FInvocationIDs);
+  if FModule.Stage = ssCompute then
+    EmitString(FEntryPoints, 15, [5, FMainID], FModule.EntryPointName, FInvocationIDs)
+  else
+  begin
+    if FModule.Stage = ssVertex then
+      ExecutionModel := 0
+    else
+      ExecutionModel := 4;
+    EmitString(FEntryPoints, 15, [ExecutionModel, FMainID], FModule.EntryPointName, FInterfaceIDs);
+    if FModule.Stage = ssFragment then
+    begin
+      Emit(FEntryPoints, 16, [FMainID, 7]);
+      for Variable in FModule.Resources do
+        if Variable.GraphicsBuiltin = gbFragDepth then
+          Emit(FEntryPoints, 16, [FMainID, 12]);
+      if FModule.PixelInterlock then
+        Emit(FEntryPoints, 16, [FMainID, 5366]);
+    end;
+  end;
   if FModule.StrictFloat then
   begin
     Emit(FEntryPoints, 16, [FMainID, 4459, 32]);
@@ -1692,8 +1846,9 @@ begin
       Emit(FEntryPoints, 16, [FMainID, 4462, 64]);
     end;
   end;
-  Emit(FEntryPoints, 16, [FMainID, 17, FModule.LocalSize[0],
-    FModule.LocalSize[1], FModule.LocalSize[2]]);
+  if FModule.Stage = ssCompute then
+    Emit(FEntryPoints, 16, [FMainID, 17, FModule.LocalSize[0],
+      FModule.LocalSize[1], FModule.LocalSize[2]]);
   for ShaderFunction in FModule.Functions do
     if not HasReferences(ShaderFunction) then EmitFunction(ShaderFunction);
   I := 0;

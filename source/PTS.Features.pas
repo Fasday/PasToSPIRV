@@ -5,6 +5,10 @@ interface
 uses PTS.Types;
 
 type
+  TShaderStage = (ssCompute, ssVertex, ssFragment);
+  TGraphicsBuiltin = (gbNone, gbPosition, gbPointSize, gbFragCoord, gbFragDepth,
+    gbFrontFacing, gbVertexIndex, gbInstanceIndex);
+  TInterpolation = (ipSmooth, ipNoPerspective, ipFlat);
   TImageFormat = (imR32UInt, imR32Int, imRGBA32Float, imRGBA8);
   TInvocationBuiltin = (biGlobalInvocationID, biLocalInvocationID,
     biLocalInvocationIndex, biWorkgroupID, biNumWorkgroups);
@@ -19,10 +23,67 @@ function TryBuiltin(const AName: string; out ABuiltin: TInvocationBuiltin): Bool
 function BuiltinName(ABuiltin: TInvocationBuiltin): string;
 function BuiltinType(ABuiltin: TInvocationBuiltin): TShaderType;
 function BuiltinDecoration(ABuiltin: TInvocationBuiltin): Cardinal;
+function ShaderStageName(AStage: TShaderStage): string;
+function GraphicsBuiltinName(ABuiltin: TGraphicsBuiltin): string;
+function TryGraphicsBuiltin(const AName: string; out ABuiltin: TGraphicsBuiltin): Boolean;
+function GraphicsBuiltinType(ABuiltin: TGraphicsBuiltin): TShaderType;
+function GraphicsBuiltinDecoration(ABuiltin: TGraphicsBuiltin): Cardinal;
 
 implementation
 
 uses System.SysUtils;
+
+function ShaderStageName(AStage: TShaderStage): string;
+const
+  Names: array[TShaderStage] of string = ('compute', 'vertex', 'fragment');
+begin
+  Result := Names[AStage];
+end;
+
+function GraphicsBuiltinName(ABuiltin: TGraphicsBuiltin): string;
+const
+  Names: array[TGraphicsBuiltin] of string = ('None', 'Position', 'PointSize',
+    'FragCoord', 'FragDepth', 'FrontFacing', 'VertexIndex', 'InstanceIndex');
+begin
+  Result := Names[ABuiltin];
+end;
+
+function TryGraphicsBuiltin(const AName: string; out ABuiltin: TGraphicsBuiltin): Boolean;
+var
+  B: TGraphicsBuiltin;
+begin
+  for B := gbPosition to High(TGraphicsBuiltin) do
+    if SameText(AName, GraphicsBuiltinName(B)) then
+    begin
+      ABuiltin := B;
+      Exit(True);
+    end;
+  ABuiltin := gbNone;
+  Result := False;
+end;
+
+function GraphicsBuiltinType(ABuiltin: TGraphicsBuiltin): TShaderType;
+begin
+  case ABuiltin of
+    gbPosition, gbFragCoord:
+      Result := stSingle4;
+    gbPointSize, gbFragDepth:
+      Result := stSingle;
+    gbFrontFacing:
+      Result := stBoolean;
+    gbVertexIndex, gbInstanceIndex:
+      Result := stInteger;
+  else
+    Result := stVoid;
+  end;
+end;
+
+function GraphicsBuiltinDecoration(ABuiltin: TGraphicsBuiltin): Cardinal;
+const
+  Values: array[TGraphicsBuiltin] of Cardinal = (0, 0, 1, 15, 22, 17, 42, 43);
+begin
+  Result := Values[ABuiltin];
+end;
 
 function ImageTypeName(AFormat: TImageFormat): string;
 const Names: array[TImageFormat] of string = ('Image2D_R32UInt','Image2D_R32Int','Image2D_RGBA32Float','Image2D_RGBA8');
