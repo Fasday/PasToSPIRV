@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.4.1 — audit of 1.3.3/1.4.0 (unreleased)
+
+- Host floating-point isolation no longer uses the RTL setters. On Win64 they rewrote the
+  process-wide DefaultMXCSR: a compilation changed the MXCSR of other threads (on their
+  next handled exception) and could leave the caller's private state as the process
+  default; two concurrent compilations could fold a constant with the wrong rounding.
+  MXCSR is now read and written directly, pinned again after an internally handled
+  exception, and restored with its status flags.
+- A Win32 host emits the same SPIR-V as Win64: constant arithmetic uses SSE2 instead of
+  the x87 FPU, whose double rounding and precision control changed Double constants.
+  The compiler units build for Linux64 and macOS x64 (the MXCSR path was selected by
+  CPUX64 alone); ARM, Linux and macOS hosts are compile-checked only.
+- Reject `Exit` in Main before its Interlock block and an unreachable Interlock block:
+  the begin/end pair must run exactly once. A conditional Discard before the block and
+  an Exit after it stay valid.
+- Enumeration and set values are accepted again as components of multi-argument integer
+  vector constructors (1.3 behavior, lost in 1.4.0). `Inc`/`Dec` are rejected on stage outputs.
+- CompileText skips a search directory in which a dependency name would leave the virtual
+  namespace, as CompileFile does, instead of failing.
+- New reserved names of 1.4.0, now documented: Discard, Interlock, TexelFetch, TextureSize,
+  CombinedTexture2D, CombinedTexture2DUInt, RoundFloat, FloorFloat, DdxFine, DdyFine.
+  Reflection `language_version` is 1.4.
+- Tests: tests/FloatStateCheck.dpr and tests/audit141.ps1 (host state, other-host builds,
+  Win32/Win64 equivalence), tests/audit_vector_ops.py, stage interfaces and whole-texture
+  fetch in tests/vulkan_graphics.py. `scripts/build.ps1 -Target/-CompilerName` builds for
+  another host. See docs/audit-1.4.1.md.
+
 ## 1.4.0 — runtime component and Vulkan 1.1 (unreleased)
 
 - Explicit Vertex/Fragment stages with typed location/built-in interfaces,

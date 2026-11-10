@@ -6,7 +6,8 @@ Vulkan-возможностей или готовый runtime для прило�
 
 ## Версионированные поверхности
 
-- Source language 1.3: подмножество в `language.md`, `extended.md`, `modules.md`, `gpu.md`.
+- Source language 1.4: подмножество в `language.md`, `extended.md`, `modules.md`, `gpu.md`,
+  `graphics.md`.
 - Default target: SPIR-V 1.0 / Vulkan 1.0, compute entry Main.
   Explicit `[Vertex]`/`[Fragment]`: documented scalar/vector interfaces and operations
   in [graphics.md](graphics.md); compute built-ins/shared/LocalSize do not cross stages.
@@ -27,7 +28,10 @@ Vulkan-возможностей или готовый runtime для прило�
 
 ## Что проверено
 
-- Delphi 13 Win64, Vulkan SDK spirv-val для Vulkan 1.0, CPU/CLI/API регрессии.
+- Delphi 13 Win64, Vulkan SDK spirv-val для Vulkan 1.0/1.1/1.2, CPU/CLI/API регрессии.
+- Хост Win32 (dcc32): тот же SPIR-V и reflection, что у Win64, на наборе исходников
+  тестов; FP-состояние вызывающего потока и процесса не меняется. Для Linux64,
+  macOS, iOS и Android модули компилятора только компилируются, без запуска.
 - Реальное выполнение на доступном AMD Vulkan device: арифметика, layout,
   реальные общие `.inc`, atomics, shared reduction/barriers, storage images,
   nearest/linear sampling и O0/O1 equivalence.
@@ -58,7 +62,10 @@ Const — finite scalar expressions из литералов/предыдущих
 compile-time выполнение Pascal. С 1.3 есть константы записей и векторов.
 С 1.0.1 Win64 parsing/constant evaluation выполняется с nearest SSE rounding,
 без FTZ/DAZ, с masked exceptions; полный MXCSR вызывающего кода восстанавливается
-в finally. Это не устанавливает режимы исполнения GPU: GPU denormals/NaN/rounding
+в finally. С 1.4.1 это делается прямой записью регистра: процессные умолчания RTL
+(`DefaultMXCSR`) и FP-состояние других потоков не затрагиваются, а флаги состояния
+вызывающего кода сохраняются.
+Это не устанавливает режимы исполнения GPU: GPU denormals/NaN/rounding
 не объявляются побитово эквивалентными CPU. Shared
 source examples задают CPU wrapper flags и проверяют эквивалентность выбранных алгоритмов.
 
@@ -113,6 +120,30 @@ source examples задают CPU wrapper flags и проверяют эквив�
   и generated bindings не изменились. В reflection `language_version` равен `1.3`.
 - Переменные, используемые вложенными подпрограммами, хранятся в Private памяти. Это
   видно в SPIR-V, но не меняет семантику: рекурсия по-прежнему запрещена.
+
+### Изменения 1.4
+
+- Добавлены стадии `[Vertex]`/`[Fragment]` с интерфейсами, `Discard`, `Interlock`,
+  combined textures, `TexelFetch`/`TextureSize`, смешанные конструкторы векторов,
+  `RoundFloat`/`FloorFloat`, векторный `ArithmeticShiftRight`, профиль `[Vulkan11]`,
+  компиляция из памяти и внешнее имя точки входа. Прежние исходники компилируются
+  без изменений и дают тот же SPIR-V, кроме одного: появились зарезервированные имена
+  `Discard`, `Interlock`, `TexelFetch`, `TextureSize`, `CombinedTexture2D`,
+  `CombinedTexture2DUInt`, `RoundFloat`, `FloorFloat`, `DdxFine`, `DdyFine`.
+  Переименуйте такие идентификаторы (переменные, функции, поля, типы, модули).
+  Слова атрибутов и имена графических built-ins не зарезервированы.
+- В 1.4.0 значения перечислений и множеств не принимались как компоненты
+  многоаргументного конструктора целочисленного вектора; 1.4.1 возвращает
+  поведение 1.3.
+- Reflection: `language_version` равен `1.4`; новые поля добавочные (`inputs`,
+  `outputs`, `pixel_interlock_ordered`, `required_device_extensions`, `coherent` у
+  image, `value_type` у combined-текстуры), новый descriptor type —
+  `combined_image_sampler`. У графических стадий `local_size` — пустой массив.
+  Layout, ABI v2 и bindings не изменились.
+- 1.4.1: `Main` не может выполнить `Exit` до блока `Interlock`, и блок должен быть
+  достижим; `Inc`/`Dec` не применяются к выходам стадии. Исходники 1.4.0 с такими
+  конструкциями теперь отклоняются: они давали SPIR-V, нарушающий правило interlock,
+  или читали write-only output.
 
 ### Проверочный прогон
 

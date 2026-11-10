@@ -86,16 +86,23 @@ begin
   FExpanded := TObjectDictionary<TSourceFile, TSourceDocument>.Create([doOwnsValues]);
 end;
 
-function VirtualSourcePath(const AName: string): string;
+// Normalizes a relative name of the virtual namespace. No exception: a search
+// directory that cannot hold a dependency is skipped, not an error by itself.
+function TryVirtualSourcePath(const AName: string; out APath, AError: string): Boolean;
 var
   Parts: TArray<string>;
   Part: string;
   Count: Integer;
 begin
-  Result := StringReplace(AName, '\', '/', [rfReplaceAll]);
-  if (Result = '') or (Result[1] = '/') or (Pos(':', Result) <> 0) or (Pos(#0, Result) <> 0) then
-    raise EArgumentException.Create('Virtual source paths must be relative and non-empty');
-  Parts := Result.Split(['/'], TStringSplitOptions.None);
+  Result := False;
+  AError := '';
+  APath := StringReplace(AName, '\', '/', [rfReplaceAll]);
+  if (APath = '') or (APath[1] = '/') or (Pos(':', APath) <> 0) or (Pos(#0, APath) <> 0) then
+  begin
+    AError := 'Virtual source paths must be relative and non-empty';
+    Exit;
+  end;
+  Parts := APath.Split(['/'], TStringSplitOptions.None);
   Count := 0;
   for Part in Parts do
   begin
@@ -104,7 +111,10 @@ begin
     if Part = '..' then
     begin
       if Count = 0 then
-        raise EArgumentException.Create('Virtual source path escapes its namespace');
+      begin
+        AError := 'Virtual source path escapes its namespace';
+        Exit;
+      end;
       Dec(Count);
     end
     else
@@ -114,9 +124,21 @@ begin
     end;
   end;
   if Count = 0 then
-    raise EArgumentException.Create('Virtual source paths must name a source');
+  begin
+    AError := 'Virtual source paths must name a source';
+    Exit;
+  end;
   SetLength(Parts, Count);
-  Result := string.Join('/', Parts);
+  APath := string.Join('/', Parts);
+  Result := True;
+end;
+
+function VirtualSourcePath(const AName: string): string;
+var
+  Error: string;
+begin
+  if not TryVirtualSourcePath(AName, Result, Error) then
+    raise EArgumentException.Create(Error);
 end;
 
 constructor TSourceLoader.Create(const AFileName: string; const ADirectories: TArray<string>);
@@ -341,7 +363,7 @@ end;
 function TSourceLoader.ResolveMemoryFile(const AName: string; const APosition: TSourcePosition;
   AModule: Boolean): TSourceFile;
 var
-  Name, Directory, Candidate, Found: string;
+  Name, Directory, Candidate, Found, Error, Rejected: string;
   Source: TSourceText;
   I: Integer;
 begin
@@ -351,6 +373,7 @@ begin
   if (Name = '') or CharInSet(Name[1], ['/', '\']) or (Pos(':', Name) <> 0) then
     raise EShaderError.Create(APosition, 'Dependency paths must be relative');
   Found := '';
+  Rejected := '';
   for I := -1 to FIncludeDirectories.Count - 1 do
   begin
     if I < 0 then
@@ -359,11 +382,13 @@ begin
       Directory := ''
     else
       Directory := FIncludeDirectories[I] + '/';
-    try
-      Candidate := VirtualSourcePath(Directory + Name);
-    except
-      on E: EArgumentException do
-        raise EShaderError.Create(APosition, E.Message);
+    // As in file mode, a directory which cannot hold the name is not searched;
+    // the reason is reported only when no other directory resolves it.
+    if not TryVirtualSourcePath(Directory + Name, Candidate, Error) then
+    begin
+      if Rejected = '' then
+        Rejected := Error;
+      Continue;
     end;
     if not FMemorySources.TryGetValue(Candidate, Source) then
       Continue;
@@ -372,7 +397,11 @@ begin
     Found := Source.FileName;
   end;
   if Found = '' then
+  begin
+    if Rejected <> '' then
+      raise EShaderError.Create(APosition, Rejected);
     raise EShaderError.Create(APosition, 'Dependency not found: ' + Name);
+  end;
   Result := ReadFile(Found, APosition);
 end;
 

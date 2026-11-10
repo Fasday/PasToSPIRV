@@ -63,7 +63,7 @@ Boolean в ресурсах запрещён рекурсивно. Atomics ос�
 | `IsNan(X)` / `IsInfinite(X)` | Boolean для scalar Single/Double |
 | `Ldexp(X, Exponent)` | X того же float-типа × 2^Exponent; Exponent: Integer |
 | `FindMSB(X)` / `FindLSB(X)` | Integer для Integer/Cardinal; для нуля -1 |
-| `ArithmeticShiftRight(X, Count)` | Integer/Int64, знаковый сдвиг с masked count |
+| `ArithmeticShiftRight(X, Count)` | Integer/Int64, знаковый сдвиг с masked count; с 1.4 также `IntegerN` с 32-битным скалярным или векторным счётчиком |
 
 `Round/Trunc/Floor/Ceil` проверяют округлённое значение до integer conversion.
 NaN, infinity и выход за диапазон дают `Low(Int64)` / `Low(Integer)`. Это отдельный

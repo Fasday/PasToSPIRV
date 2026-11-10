@@ -11,7 +11,7 @@ Pascal-подмножество → лексер/парсер → типизир
 
 ## Статус
 
-Ветка разработки **1.4.0**: default **compute-vulkan1.0**, optional
+Ветка разработки **1.4.1**: default **compute-vulkan1.0**, optional
 **compute-vulkan1.1** / **compute-vulkan1.2** и компонент компиляции из памяти.
 Явные стадии `[Vertex]` и `[Fragment]` описаны в [graphics.md](docs/graphics.md).
 Компилятор напрямую записывает бинарный
@@ -82,6 +82,13 @@ geometry/tessellation/mesh stages и произвольного препроце
 Результат: `build\bin\PasToSPIRV.exe`. Для работы собранного компилятора
 Vulkan SDK, Vulkan-драйвер и Python **не нужны**. Для открытия в IDE используется
 `source\PasToSPIRV.dpr`, целевая платформа — Windows 64-bit.
+
+Сборка под Win32 даёт тот же SPIR-V; модули компилятора также компилируются для
+Linux, macOS, iOS и Android (на этих хостах тесты не запускаются):
+
+```powershell
+.\scripts\build.ps1 -Target win32 -CompilerName dcc32 -OutputDirectory .\build\win32
+```
 
 ## Использование
 
@@ -238,7 +245,8 @@ end;
 
 Полный compute-пример — [examples/vector_math.pas](examples/vector_math.pas).
 Поддерживаются конструкторы из отдельных компонентов, заполнение одним скаляром,
-преобразования векторов одинаковой ширины и покомпонентная арифметика.
+сочетания скаляров и векторов (`Single4(Position, 1.0)`), преобразования векторов
+одинаковой ширины и покомпонентная арифметика.
 В арифметике скаляр может распространяться на компоненты вектора; присваивание
 скаляра в вектор требует явного конструктора, например `Single3(0)`.
 
@@ -296,9 +304,11 @@ type
 
 ```powershell
 python .\tests\vulkan_smoke.py --require-shared-cpu
+python .\tests\vulkan_graphics.py
 ```
 
-Smoke-тест проверяет масштабирование массива, целочисленный цикл с переполнением
+Второй скрипт рисует настоящими vertex/fragment pipelines и читает combined textures;
+для него нужна очередь с graphics-возможностями. Smoke-тест проверяет масштабирование массива, целочисленный цикл с переполнением
 и логическими сдвигами, неполную рабочую группу, неизменность хвоста и `Count = 0`.
 Отдельный dispatch проверяет 16 числовых граничных случаев: знаковые `div/mod`,
 маскирование количества сдвига, числовые преобразования и wraparound.
@@ -337,7 +347,11 @@ CPU в 1 поток / все ядра, area-фильтр на Vulkan и штат
 
 - [Поддерживаемый язык и числовые правила](docs/language.md)
 - [Расширения 1.1 и optional Vulkan 1.2](docs/extended.md)
+- [Профиль Vulkan 1.1](docs/vulkan11.md)
+- [Графические стадии, interlock и combined textures](docs/graphics.md)
+- [Компиляция из памяти и компонент](docs/runtime.md)
 - [SoftDouble: точное деление Double](docs/softdouble.md)
+- [Аудит 1.3.3/1.4.0 и исправления 1.4.1](docs/audit-1.4.1.md)
 - [Аудит синтаксиса 1.2/1.3 и исправления 1.3.2](docs/audit-1.3.2.md)
 - [Аудит расширений и исправления 1.1.1](docs/audit-1.1.1.md)
 - [Повторный аудит и исправления 1.1.2](docs/audit-1.1.2.md)

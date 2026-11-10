@@ -8,7 +8,9 @@ reflection `entry_point` в `VkPipelineShaderStageCreateInfo.pName`, с точн
 Delphi, не все GPU-возможности и не готовый Vulkan runtime.
 
 По умолчанию профиль сохранён. Явный `[Vulkan12]` добавляет SPIR-V 1.3 / Vulkan 1.2,
-Byte/Word native storage, Int64/UInt64/Double и var/out. `[StrictFloat]` запрашивает
+Byte/Word native storage, Int64/UInt64/Double и var/out; `[Vulkan11]` даёт тот же язык
+для Vulkan 1.1 с отражёнными расширениями устройства ([vulkan11.md](vulkan11.md)).
+`[StrictFloat]` запрашивает
 IEEE modes; host проверяет reflection `required_features` и float-controls properties.
 `[Aliased]` обозначает перекрывающиеся storage-buffer views, не устраняя races.
 Root helpers могут обращаться к видимым ресурсам/built-ins; atomics/barriers
@@ -118,13 +120,17 @@ Pixel := SampleLevel(SourceTexture, LinearSampler, UV, Lod);
 ```
 
 - Texture2D — отдельный sampled-image descriptor с float/normalized sample type;
-  Sampler — отдельный sampler descriptor. Не combined-image-sampler.
+  Sampler — отдельный sampler descriptor. Combined-image-sampler — это отдельные типы
+  `CombinedTexture2D` и `CombinedTexture2DUInt` (с 1.4, в любой стадии):
+  `SampleLevel(Combined, UV, Lod)` без Sampler, `TexelFetch(Texture, Position, Lod)` и
+  `TextureSize(Texture, Lod)`; см. [graphics.md](graphics.md).
 - UV — Single2, Lod — Single, результат — Single4. В compute нет скрытых derivatives:
   sampling всегда с **явным LOD**.
 - Filter, addressing, mipmaps, min/max LOD и допустимый image format задаёт host.
   Nearest и linear проверены; linear требует соответствующего format feature.
-- Нет integer/depth/cube/array textures, comparison sampling или неявного LOD.
-  Texture2D не записывается через ImageStore.
+- Нет depth/cube/array textures, comparison sampling, фильтруемой выборки из целочисленных
+  текстур или неявного LOD. Целочисленные тексели читает только `TexelFetch` из
+  `CombinedTexture2DUInt`. Texture2D не записывается через ImageStore.
 
 Пример: `examples/sample_texture.pas`. GPU-тест проверяет nearest и bilinear
 sampling, а не только создание pipeline.
@@ -136,6 +142,17 @@ Schema ABI остаётся v2. Добавлены `images`, `textures`, `sample
 `optimization`. У image есть descriptor type, binding/set, Vulkan format и access.
 У sampled texture/sampler — отдельные descriptor types. Shared не объявляет
 host ABI и не требует Vulkan descriptor.
+
+С 1.4 (все поля добавочные):
+
+- `required_device_extensions` появляется при `[Vulkan11]` и при pixel interlock;
+  хост включает эти расширения вместе с `required_features`.
+- У графических стадий есть `inputs` и `outputs` (имя, тип, `location` с
+  `interpolation` либо `builtin`) и `pixel_interlock_ordered`; `local_size` у них —
+  пустой массив, `stage` и `profile` называют фактическую стадию.
+- У texture `descriptor_type` бывает `combined_image_sampler` с `value_type`
+  (`Single4` или `Cardinal4`); у image с `[Coherent]` есть `coherent: true`.
+- `language_version` равен `1.4`.
 
 Generated Delphi unit оставляет packed value types только для буферов/push constants;
 для opaque descriptors выдаются binding/set константы, не фиктивные record-пиксели.

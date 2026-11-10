@@ -134,7 +134,7 @@ class ImageRuntime(VulkanRuntime):
                 pushConstantRangeCount=int(bool(push)),pPushConstantRanges=C.pointer(push_range) if push else None),cleanup)
             code = module.read_bytes(); words = (U32 * (len(code)//4)).from_buffer_copy(code)
             shader = self.create("ShaderModule",ShaderModuleCreateInfo(sType=16,codeSize=len(code),pCode=words),cleanup)
-            stage = PipelineShaderStageCreateInfo(sType=18,stage=0x20,module=shader,pName=b"Main")
+            stage = PipelineShaderStageCreateInfo(sType=18,stage=0x20,module=shader,pName=meta["entry_point"].encode("ascii"))
             pipeline_info = ComputePipelineCreateInfo(sType=29,stage=stage,layout=pipeline_layout,basePipelineIndex=-1)
             pipeline = U64()
             result = self.vkCreateComputePipelines(self.device,0,1,C.byref(pipeline_info),None,C.byref(pipeline))

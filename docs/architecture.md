@@ -124,7 +124,10 @@ Continue-блок проверяет достижение последнего �
 | `source/PTS.Compiler.pas` | Библиотечная точка входа и координация |
 | `source/PTS.Reflection.pas` | JSON v2 с графом внешних типов |
 | `source/PTS.Bindings.pas` | Генерация packed Delphi ABI-описаний |
-| `scripts/build.ps1` | Сборка dcc64 без внешнего compiler backend |
+| `source/PTS.FloatEnvironment.pas` | Закрепление и точное восстановление FP-состояния хоста на время компиляции |
+| `source/PTS.Graphics.pas` | Проверки графических стадий: интерфейсы, outputs, Discard, Interlock |
+| `source/PTS.Component.pas` | Невизуальный компонент компиляции из памяти |
+| `scripts/build.ps1` | Сборка dcc64 без внешнего compiler backend; `-Target`/`-CompilerName` для других хостов |
 | `scripts/test.ps1` | CLI-регрессии, ошибки, opcodes, reflection, spirv-val |
 | `tests/vectors.ps1` | Матрица векторных типов, операций, intrinsics и диагностик |
 | `tests/layout.ps1` | Независимые std430-эталоны, типы, ABI/CLI-регрессии |
@@ -134,6 +137,10 @@ Continue-блок проверяет достижение последнего �
 | `tests/SharedSourceCheck.dpr` | Настоящий Delphi reference из общих `.inc` |
 | `tests/release.ps1` | Constants/qualified names/GPU diagnostics/O1/cache |
 | `tests/vulkan_images.py` | Image uploads/layout transitions/copies/sampling CPU references |
+| `tests/vulkan_graphics.py` | Настоящие vertex/fragment pipelines, интерфейсы стадий, combined textures |
+| `tests/audit_vector_ops.py` | Случайные конструкторы/сдвиги/округления на GPU против модели |
+| `tests/FloatStateCheck.dpr` | FP-состояние хоста: не наследуется, восстанавливается, без процессных эффектов |
+| `tests/audit141.ps1` | Регрессии аудита 1.4.1, сборка под другие хосты, сравнение Win32 с Win64 |
 | `tests/benchmark.py` | Wall-clock CLI benchmark, не kernel throughput |
 | `tests/vulkan_smoke.py` | Необязательная реальная Vulkan-проверка примеров |
 
@@ -169,7 +176,8 @@ functions. Выход детерминирован, без времени сбо
 
 - `format_version = 2`, `layout = std430`, `compiler`, `compiler_version`;
 - `target_env`, `spirv_version`, `stage`, `entry_point`;
-- `local_size`: три компонента;
+- `local_size`: три компонента у compute, пустой массив у графических стадий;
+- у графических стадий `inputs`/`outputs` и `pixel_interlock_ordered` (см. [gpu.md](gpu.md));
 - `types`: граф внешних записей/массивов с id, size/alignment, fields/array stride;
 - `buffers`: имя, descriptor type, set/binding, тип/id элемента, size/alignment, stride, access;
 - `push_constants`: имя, type/id, offset, size/alignment, stage, поля с type/id/offset/size/alignment.
@@ -234,5 +242,6 @@ memory/barriers, typed storage images/explicit-LOD sampling, batch/cache и O1.
 дополнительные форматы/optional capabilities, private exports, более точный
 uniformity analysis, diagnostics/debug tooling и измеренные оптимизации.
 
-Оптимизация и расширение до vertex/fragment стадий идут после устойчивого
-контракта и тестов. Развитие компилятора не зависит от конкретного приложения.
+Vertex/fragment стадии добавлены в 1.4 ([graphics.md](graphics.md)); оптимизации
+идут после устойчивого контракта и тестов. Развитие компилятора не зависит от
+конкретного приложения.

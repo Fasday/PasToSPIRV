@@ -60,7 +60,8 @@ SPIR-V for Vulkan. This is not a Delphi-to-GPU application converter.
   texture sampling uses explicit LOD. Check image formats/capabilities on the host.
 - Graphics interfaces are explicit 32-bit scalar/vector locations or documented
   built-ins. Inputs are read-only; outputs are whole-value, Main-only writes.
-  Ordered pixel interlock is a structured Main-only block, never unmatched calls.
+  Ordered pixel interlock is a structured Main-only block, never unmatched calls:
+  Main cannot Exit before it and it must be reachable (the pair runs exactly once).
 - O1 may fold only defined integral/Boolean constants. Do not reassociate or
   fold floating-point operations or remove atomic/resource side effects.
 - Batch cache must re-resolve dependencies and check artifact hashes before hits;
@@ -68,7 +69,12 @@ SPIR-V for Vulkan. This is not a Delphi-to-GPU application converter.
 - A consumed module qualifier must never fall back to locals/resources/built-ins
   or anonymous type syntax. Missing exports are errors.
 - Win64 compiler entry points isolate and restore MXCSR; do not inherit caller
-  rounding/FTZ/DAZ/status. Shifts mask by width-1; preserve explicitly 32-bit host
+  rounding/FTZ/DAZ/status. Access MXCSR/x87 directly, never through RTL setters:
+  those rewrite process-wide defaults which the RTL loads into other threads. Pin
+  the state again in any handler that swallows an exception and continues. Constant
+  arithmetic must not depend on the host FPU (SSE2 on x86, never x87); keep Win32
+  output byte-identical to Win64 and the units compiling for the other targets.
+  Shifts mask by width-1; preserve explicitly 32-bit host
   operations for existing types, and distinguish logical shr from arithmetic shift.
 - Windows output safety must compare canonical destinations/file identities,
   not only lexical paths; cover hard links and directory junctions in regressions.
@@ -92,6 +98,8 @@ From the repository root in PowerShell:
 .\scripts\test.ps1 -SkipBuild
 python .\tests\vulkan_smoke.py --require-shared-cpu
 python .\tests\vulkan_extended.py
+python .\tests\vulkan_graphics.py
+python .\tests\audit_vector_ops.py --programs 40
 python .\tests\audit_typed_trees.py --count 300 --depth 6 --rounds 2
 python .\tests\audit_flow_runtime.py --programs 40
 python .\tests\audit_syntax_runtime.py --programs 40
@@ -105,7 +113,10 @@ Python, the Vulkan loader and a compute device with
 host-visible, host-coherent memory. It is optional on machines without Vulkan;
 report explicitly if it was not run. `scripts/test.ps1` requires `spirv-val`
 and `spirv-dis`, validating default fixtures for Vulkan 1.0 and Vulkan12 fixtures
-for Vulkan 1.2. Extended GPU tests require the reflected optional features.
+for Vulkan 1.2. Extended GPU tests require the reflected optional features;
+`vulkan_graphics.py` needs a queue with graphics support. `scripts/test.ps1` also
+compiles the units for every other Delphi target that is installed and compares a
+Win32 build with Win64 (skipped with a note when a target is missing).
 
 Use two-space indentation in Delphi, four spaces in PowerShell/Python.
 Generated files belong under `build/`. Do not add a license or copyright

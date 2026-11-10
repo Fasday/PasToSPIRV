@@ -1,6 +1,7 @@
 # Loaded by scripts/test.ps1; compiler and validator are test-only tools.
 foreach ($name in @('graphics_vertex', 'graphics_fragment', 'combined_texture',
-    'combined_sample', 'graphics_vector_math')) {
+    'combined_sample', 'graphics_vector_math', 'graphics_interface_vertex',
+    'graphics_interface_fragment', 'combined_fetch')) {
     $source = [IO.File]::ReadAllText((Join-Path $root "tests\fixtures\$name.pasm"))
     Test-Success $name $source
 }

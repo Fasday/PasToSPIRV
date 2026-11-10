@@ -117,6 +117,12 @@ begin
     ExpectError('{$I ''loop.pasm''}', [TSourceText.Create('loop.pasm',
       '{$I ''Main.pas''}')], nil, 'Include cycle');
     ExpectError('{$I ''../outside.pasm''}', nil, nil, 'escapes its namespace');
+    // As in file mode, a directory which cannot hold the name is skipped when
+    // another search directory resolves it.
+    SameCode(TShaderCompiler.Compile(Plain), TShaderCompiler.CompileText('{$I ''../body.pasm''}',
+      'Main.pas', [TSourceText.Create('lib/body.pasm', Plain)], ['lib/sub']));
+    ExpectError('{$I ''../body.pasm''}', [TSourceText.Create('lib/body.pasm', Plain)], ['other'],
+      'escapes its namespace');
     try
       Compiler.Compile(Root, [TSourceText.Create('Values.pasm', Values),
         TSourceText.Create('./Values.pasm', Values)]);

@@ -4,7 +4,14 @@ param(
     # Optional .rc scripts, compiled with Delphi's cgrc into build\res\<name>.res first.
     [string[]]$Resources = @(),
     # Isolate test/demo builds from executables which the user may have open.
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    # Another host of the compiler units, for example -Target win32 -CompilerName dcc32
+    # or -Target linux64 -CompilerName dcclinux64. Units go to build\dcu\<target>;
+    # a .pas project is compiled to units only (no linker or platform SDK is needed).
+    [string]$Target = 'win64',
+    [string]$CompilerName = 'dcc64',
+    # Only report whether this Delphi installation has the compiler and RTL of -Target.
+    [switch]$Probe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,25 +40,29 @@ if (-not $DelphiRoot) {
 }
 
 if (-not $DelphiRoot) {
+    if ($Probe) { return $false }
     throw 'Delphi was not found. Pass -DelphiRoot or set BDS to the Delphi installation directory.'
 }
 
-$compiler = Join-Path $DelphiRoot 'bin\dcc64.exe'
-$library = Join-Path $DelphiRoot 'lib\win64\release'
+$compiler = Join-Path $DelphiRoot "bin\$CompilerName.exe"
+$library = Join-Path $DelphiRoot "lib\$Target\release"
+if ($Probe) { return ((Test-Path $compiler) -and (Test-Path $library)) }
 $output = Join-Path $root 'build\bin'
 if ($OutputDirectory) { $output = [IO.Path]::GetFullPath($OutputDirectory) }
 $units = Join-Path $root 'build\dcu'
+# Units of different targets must never share a directory.
+if ($Target -ne 'win64') { $units = Join-Path $units $Target }
 New-Item -ItemType Directory -Force -Path $output, $units | Out-Null
 
 foreach ($resource in $Resources) {
     $script = (Resolve-Path $resource).Path
     $resourceOutput = Join-Path $root 'build\res'
-    $target = Join-Path $resourceOutput ([IO.Path]::GetFileNameWithoutExtension($script) + '.res')
+    $compiledResource = Join-Path $resourceOutput ([IO.Path]::GetFileNameWithoutExtension($script) + '.res')
     New-Item -ItemType Directory -Force -Path $resourceOutput | Out-Null
     # File names inside the script are resolved relative to its directory.
     Push-Location ([IO.Path]::GetDirectoryName($script))
     try {
-        $log = & (Join-Path $DelphiRoot 'bin\cgrc.exe') "-fo$target" $script 2>&1
+        $log = & (Join-Path $DelphiRoot 'bin\cgrc.exe') "-fo$compiledResource" $script 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Resource compilation of $script failed (exit code $LASTEXITCODE): $log"
         }
@@ -68,4 +79,9 @@ try {
 }
 finally { Pop-Location }
 
-Write-Host "Built: $(Join-Path $output ([IO.Path]::GetFileNameWithoutExtension($Project) + '.exe'))"
+if ([IO.Path]::GetExtension($Project) -ieq '.pas') {
+    Write-Host "Compiled units for ${Target}: $Project"
+}
+else {
+    Write-Host "Built: $(Join-Path $output ([IO.Path]::GetFileNameWithoutExtension($Project) + '.exe'))"
+}

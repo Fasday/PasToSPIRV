@@ -151,11 +151,100 @@ class GraphicsRuntime(ImageRuntime):
             return C.string_at(image.download.mapping, image.download.size)
 
 
+def compile_text(root, output, name, text, optimize, entry=None):
+    source = output / f'{name}.pasm'
+    source.write_text(text, encoding='utf-8')
+    module = output / f'{name}_O{int(optimize)}.spv'
+    arguments = [str(root / 'build/bin/PasToSPIRV.exe'), 'compile', str(source), '-o', str(module)]
+    if entry:
+        arguments += ['--entry-point', entry]
+    if optimize:
+        arguments.append('-O1')
+    completed = subprocess.run(arguments, capture_output=True, text=True, encoding='utf-8')
+    if completed.returncode:
+        raise RuntimeError(completed.stderr)
+    return module
+
+
+def interface_pixel(px, py, exchanged):
+    """RGBA8 which graphics_interface_*.pasm must produce at a pixel centre."""
+    if px == 5 or (px == 9 and py >= 8):
+        return (0, 0, 0, 0)  # Discarded: the clear value stays.
+    if py == 0:
+        return (round((px + 0.5) / 32 * 255), round(0.5 / 16 * 255), round(0.75 * 255), round(0.5 * 255))
+    x = (px + 0.5) / 32 * 2 - 1
+    y = (py + 0.5) / 16 * 2 - 1
+    # Screen-space weights of the corners (-1,-1), (3,-1), (-1,3) and the vertex index at each.
+    weights = [1 - (x + 1) / 4 - (y + 1) / 4, (x + 1) / 4, (y + 1) / 4]
+    index = [0, 2, 1] if exchanged else [0, 1, 2]
+    linear = sum(b * i for b, i in zip(weights, index))
+    # Clip-space w of vertex i is 1 + i: perspective-correct interpolation divides by it.
+    smooth = (sum(b * i / (1 + i) for b, i in zip(weights, index)) /
+              sum(b / (1 + i) for b, i in zip(weights, index)))
+    # Corner order 0,1,2 is clockwise with y down: back-facing for counter-clockwise front faces.
+    # Flat values come from the provoking vertex 0: Id = (7, 40), Tag = 200.
+    return (round(0.25 * 255), round(min(smooth * 0.5, 1) * 255), round(min(linear * 0.5, 1) * 255),
+            255 if exchanged else 128)
+
+
+def check_interfaces(runtime, root, output):
+    vertex_text = (root / 'tests/fixtures/graphics_interface_vertex.pasm').read_text(encoding='utf-8')
+    fragment_text = (root / 'tests/fixtures/graphics_interface_fragment.pasm').read_text(encoding='utf-8')
+    for profile, entry in [('', None), (', Vulkan11', None), (', Vulkan12, StrictFloat', 'main')]:
+        for optimize in [False, True]:
+            for exchanged in [False, True]:
+                vertex_source = vertex_text.replace('[Vertex]', f'[Vertex{profile}]')
+                if exchanged:
+                    vertex_source = vertex_source.replace('    1: Result', '    2: Result')
+                    assert vertex_source.count('    2: Result') == 1
+                tag = f'{len(profile)}{int(exchanged)}'
+                vertex = compile_text(root, output, f'interface_vertex_{tag}', vertex_source, optimize, entry)
+                fragment = compile_text(root, output, f'interface_fragment_{tag}',
+                                        fragment_text.replace('[Fragment]', f'[Fragment{profile}]'), optimize, entry)
+                pixels = runtime.draw(vertex, fragment)
+                for y in range(16):
+                    for x in range(32):
+                        expected = interface_pixel(x, y, exchanged)
+                        actual = pixels[(y * 32 + x) * 4:(y * 32 + x + 1) * 4]
+                        if any(abs(a - b) > 1 for a, b in zip(actual, expected)):
+                            raise AssertionError(('interface', profile, optimize, exchanged, x, y, tuple(actual), expected))
+
+
+def check_fetch(runtime, root, output):
+    source_texels = [(x + 10 * y + 0.25, 100.0 + x, 200.0 + y, 1.0) for y in range(3) for x in range(5)]
+    index_texels = [1000 + x + 16 * y for y in range(2) for x in range(4)]
+    plain_texels = [(0.5 + x, 0.75 + y, -1.0 * (x + 2 * y), 2.0) for y in range(2) for x in range(2)]
+    for optimize in [False, True]:
+        module = compile_shader(root, output, 'combined_fetch', 'tests/fixtures', optimize=optimize)
+        result = runtime.run_images(module, {'OutF': bytes(60 * 16), 'OutU': bytes(15 * 16), 'OutS': bytes(16 * 16)}, {
+            'Source': dict(width=5, height=3, format=109, data=struct.pack('<60f', *(v for t in source_texels for v in t))),
+            'Indices': dict(width=4, height=2, format=98, data=struct.pack('<8I', *index_texels)),
+            'Plain': dict(width=2, height=2, format=109, data=struct.pack('<16f', *(v for t in plain_texels for v in t))),
+        }, b'', (1, 1, 1))
+        fetched = struct.unpack('<240f', result['OutF'])
+        indices = struct.unpack('<60I', result['OutU'])
+        sizes = struct.unpack('<64i', result['OutS'])
+        for i in range(15):
+            x, y = i % 5, i // 5
+            for slot in (0, 1, 3):  # Integer2 fetch, Cardinal2 fetch, nearest sample at the centre
+                if fetched[(i * 4 + slot) * 4:(i * 4 + slot) * 4 + 4] != source_texels[i]:
+                    raise AssertionError(('combined fetch', optimize, slot, x, y))
+            if fetched[(i * 4 + 2) * 4:(i * 4 + 2) * 4 + 4] != plain_texels[(y & 1) * 2 + (x & 1)]:
+                raise AssertionError(('separate texture fetch', optimize, x, y))
+            if indices[i * 4] != index_texels[(y % 2) * 4 + (x % 4)]:
+                raise AssertionError(('unsigned fetch', optimize, x, y, indices[i * 4]))
+            if sizes[i * 4:i * 4 + 4] != (5, 3, 4, 2):
+                raise AssertionError(('TextureSize', optimize, sizes[i * 4:i * 4 + 4]))
+        if sizes[60:64] != (2, 2, 7, 9):
+            raise AssertionError(('TextureSize of a separate texture', optimize, sizes[60:64]))
+
+
 def main():
     root = Path(__file__).resolve().parents[1]
     output = root / 'build/vulkan-graphics'
     output.mkdir(parents=True, exist_ok=True)
     with GraphicsRuntime() as runtime:
+        check_interfaces(runtime, root, output)
         for optimize in [False, True]:
             vertex = compile_shader(root, output, 'graphics_vertex', 'tests/fixtures', optimize=optimize)
             fragment = compile_shader(root, output, 'graphics_fragment', 'tests/fixtures', optimize=optimize)
@@ -173,6 +262,7 @@ def main():
                         if any(abs(a - b) > 1 for a, b in zip(actual, expected)):
                             raise AssertionError((optimize, discard, x, y, tuple(actual), expected))
     with ImageRuntime() as runtime:
+        check_fetch(runtime, root, output)
         for optimize in [False, True]:
             module = compile_shader(root, output, 'combined_texture', 'tests/fixtures', optimize=optimize)
             values = struct.pack('<16f', *([0.25, 0.5, 0.75, 1.0] * 4))
@@ -195,6 +285,9 @@ def main():
                     0, 10, 1, 11, -4, -2, -1, -1, -8, 2, -1, 0):
                 raise AssertionError('Mixed constructors, evaluation order or signed vector shifts differ')
     print('PASS: native vertex/fragment, varying inputs, fine derivatives, helper Discard and combined float/uint texel fetch, O0/O1.')
+    print('Checked VertexIndex/InstanceIndex, Flat integer varyings, smooth vs NoPerspective, FragCoord, FrontFacing '
+          '(both windings), Discard in a loop and a nested routine, a renamed entry point (3 profiles).')
+    print('Checked every texel: TexelFetch (Integer2/Cardinal2, combined and separate), TextureSize, combined SampleLevel.')
 
 
 if __name__ == '__main__':

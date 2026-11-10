@@ -67,7 +67,7 @@ begin
     Root.AddPair('format_version', TJSONNumber.Create(2));
     Root.AddPair('compiler', 'PasToSPIRV');
     Root.AddPair('compiler_version', AVersion);
-    Root.AddPair('language_version','1.3');
+    Root.AddPair('language_version','1.4');
     if AModule.Vulkan11 then
     begin
       Root.AddPair('profile', ShaderStageName(AModule.Stage) + '-vulkan1.1');

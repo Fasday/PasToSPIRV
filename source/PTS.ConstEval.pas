@@ -25,13 +25,121 @@ procedure OptimizeConstants(AModule: TShaderModule);
 
 implementation
 
-uses System.SysUtils, System.Math, PTS.FloatLiteral;
+uses System.SysUtils, System.Math, PTS.FloatLiteral, PTS.FloatEnvironment;
 
 function AsFloat(const V: TConstantValue): Double;
 var S: Single;
 begin
   if V.DataType = stDouble then Move(V.Bits, Result, 8)
   else begin Move(V.Bits, S, 4); Result := S; end;
+end;
+
+// binary64/binary32 operations rounded once. Win32 code would use the x87 FPU,
+// which rounds a Double result twice (a subnormal one even at 53-bit precision
+// control): there the operations are SSE2 scalar instructions, as on other hosts.
+{$IF Defined(MSWINDOWS) and Defined(CPUX86)}
+  {$DEFINE PTS_SSE2_OPERATIONS}
+{$ENDIF}
+
+{$IFDEF PTS_SSE2_OPERATIONS}
+procedure AddDouble(A, B, R: PDouble);
+asm
+        MOVSD   XMM0, QWORD PTR [EAX]
+        ADDSD   XMM0, QWORD PTR [EDX]
+        MOVSD   QWORD PTR [ECX], XMM0
+end;
+
+procedure SubtractDouble(A, B, R: PDouble);
+asm
+        MOVSD   XMM0, QWORD PTR [EAX]
+        SUBSD   XMM0, QWORD PTR [EDX]
+        MOVSD   QWORD PTR [ECX], XMM0
+end;
+
+procedure MultiplyDouble(A, B, R: PDouble);
+asm
+        MOVSD   XMM0, QWORD PTR [EAX]
+        MULSD   XMM0, QWORD PTR [EDX]
+        MOVSD   QWORD PTR [ECX], XMM0
+end;
+
+procedure DivideDouble(A, B, R: PDouble);
+asm
+        MOVSD   XMM0, QWORD PTR [EAX]
+        DIVSD   XMM0, QWORD PTR [EDX]
+        MOVSD   QWORD PTR [ECX], XMM0
+end;
+
+procedure AddSingle(A, B, R: PSingle);
+asm
+        MOVSS   XMM0, DWORD PTR [EAX]
+        ADDSS   XMM0, DWORD PTR [EDX]
+        MOVSS   DWORD PTR [ECX], XMM0
+end;
+
+procedure SubtractSingle(A, B, R: PSingle);
+asm
+        MOVSS   XMM0, DWORD PTR [EAX]
+        SUBSS   XMM0, DWORD PTR [EDX]
+        MOVSS   DWORD PTR [ECX], XMM0
+end;
+
+procedure MultiplySingle(A, B, R: PSingle);
+asm
+        MOVSS   XMM0, DWORD PTR [EAX]
+        MULSS   XMM0, DWORD PTR [EDX]
+        MOVSS   DWORD PTR [ECX], XMM0
+end;
+
+procedure DivideSingle(A, B, R: PSingle);
+asm
+        MOVSS   XMM0, DWORD PTR [EAX]
+        DIVSS   XMM0, DWORD PTR [EDX]
+        MOVSS   DWORD PTR [ECX], XMM0
+end;
+{$ENDIF}
+
+// AOperation is opAdd, opSubtract, opMultiply or opDivide.
+function DoubleOperation(AOperation: TOperator; X, Y: Double): Double;
+begin
+  {$IFDEF PTS_SSE2_OPERATIONS}
+  case AOperation of
+    opAdd: AddDouble(@X, @Y, @Result);
+    opSubtract: SubtractDouble(@X, @Y, @Result);
+    opMultiply: MultiplyDouble(@X, @Y, @Result);
+  else
+    DivideDouble(@X, @Y, @Result);
+  end;
+  {$ELSE}
+  case AOperation of
+    opAdd: Result := X + Y;
+    opSubtract: Result := X - Y;
+    opMultiply: Result := X * Y;
+  else
+    Result := X / Y;
+  end;
+  {$ENDIF}
+end;
+
+function SingleOperation(AOperation: TOperator; X, Y: Single): Single;
+begin
+  {$IFDEF PTS_SSE2_OPERATIONS}
+  case AOperation of
+    opAdd: AddSingle(@X, @Y, @Result);
+    opSubtract: SubtractSingle(@X, @Y, @Result);
+    opMultiply: MultiplySingle(@X, @Y, @Result);
+  else
+    DivideSingle(@X, @Y, @Result);
+  end;
+  {$ELSE}
+  case AOperation of
+    opAdd: Result := X + Y;
+    opSubtract: Result := X - Y;
+    opMultiply: Result := X * Y;
+  else
+    Result := X / Y;
+  end;
+  {$ENDIF}
 end;
 
 function EvaluateDefined(AExpression: TExpression; out AValue: TConstantValue): Boolean;
@@ -63,13 +171,13 @@ begin
       AValue.Bits := A.Bits and 1
     else if A.DataType = stSingle then
     begin
-      S := Single(AsFloat(A)) * Single(AsFloat(A));
+      S := SingleOperation(opMultiply, Single(AsFloat(A)), Single(AsFloat(A)));
       if IsNan(S) or IsInfinite(S) then Exit;
       Move(S, AValue.Bits, 4);
     end
     else if A.DataType = stDouble then
     begin
-      Z := AsFloat(A) * AsFloat(A);
+      Z := DoubleOperation(opMultiply, AsFloat(A), AsFloat(A));
       if IsNan(Z) or IsInfinite(Z) then Exit;
       Move(Z, AValue.Bits, 8);
     end
@@ -183,10 +291,8 @@ begin
   begin
     X := AsFloat(A); Y := AsFloat(B);
     case AExpression.Operation of
-      opAdd: Z := X + Y;
-      opSubtract: Z := X - Y;
-      opMultiply: Z := X * Y;
-      opDivide: begin if Y = 0 then Exit; Z := X / Y; end;
+      opAdd, opSubtract, opMultiply: Z := DoubleOperation(AExpression.Operation, X, Y);
+      opDivide: begin if Y = 0 then Exit; Z := DoubleOperation(opDivide, X, Y); end;
       opEqual: begin AValue.Bits := Ord(X = Y); Exit(True); end;
       opNotEqual: begin AValue.Bits := Ord(X <> Y); Exit(True); end;
       opLess: begin AValue.Bits := Ord(X < Y); Exit(True); end;
@@ -200,13 +306,7 @@ begin
     begin
       // Retain binary32 operation semantics (especially division), not a Double
       // operation followed by a potentially double-rounded narrowing.
-      case AExpression.Operation of
-        opAdd: S := Single(X) + Single(Y);
-        opSubtract: S := Single(X) - Single(Y);
-        opMultiply: S := Single(X) * Single(Y);
-        opDivide: S := Single(X) / Single(Y);
-      else S := Z;
-      end;
+      S := SingleOperation(AExpression.Operation, Single(X), Single(Y));
       if IsNan(S) or IsInfinite(S) then Exit;
       Move(S, AValue.Bits, 4);
     end
@@ -350,8 +450,17 @@ begin
   try
     if not ExactValue(AExpression, Exact) or not EvaluateConstant(AExpression, Wrapped) then Exit(False);
   except
-    on E: EIntOverflow do Exit(False);
-    on E: ERangeError do Exit(False);
+    // Compilation continues: the RTL may have reloaded the process FP defaults.
+    on E: EIntOverflow do
+    begin
+      PinCompilerFloatEnvironment;
+      Exit(False);
+    end;
+    on E: ERangeError do
+    begin
+      PinCompilerFloatEnvironment;
+      Exit(False);
+    end;
   end;
   if IsSignedInteger(Wrapped.DataType) then Result := SignedValue(Wrapped.Bits, Wrapped.DataType) = Exact
   else Result := (Exact >= 0) and (UInt64(Exact) = (Wrapped.Bits and IntegerMask(Wrapped.DataType)));
@@ -362,7 +471,11 @@ begin
   try
     Result := EvaluateDefined(AExpression, AValue);
   except
-    on E: EMathError do Result := False;
+    on E: EMathError do
+    begin
+      PinCompilerFloatEnvironment;
+      Result := False;
+    end;
   end;
 end;
 

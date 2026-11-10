@@ -66,7 +66,7 @@ end;
 
 procedure PrintUsage;
 begin
-  Writeln('PasToSPIRV ', CompilerVersion, ' - Pascal compute shaders to SPIR-V');
+  Writeln('PasToSPIRV ', CompilerVersion, ' - Pascal shaders to SPIR-V');
   Writeln;
   Writeln('Usage: pastospirv [compile] <input.pas> [-o <output.spv>]');
   Writeln('                 [--reflection <output.json>]');
@@ -83,6 +83,8 @@ begin
   Writeln('--entry-point changes the external SPIR-V name; the source procedure is always Main');
   Writeln('Shader entry files may use .pasm (no module header) or another extension');
   Writeln('Optional [Vulkan12] on Main: SPIR-V 1.3 / Vulkan 1.2; see docs/extended.md');
+  Writeln('Optional [Vulkan11] on Main: SPIR-V 1.3 / Vulkan 1.1; see docs/vulkan11.md');
+  Writeln('Optional [Vertex] or [Fragment] on Main: graphics stages; see docs/graphics.md');
 end;
 
 function RunBuild: Integer;

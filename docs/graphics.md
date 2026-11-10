@@ -33,7 +33,8 @@ end;
   FrontFacing (Boolean); fragment output FragDepth (Single).
 - Vertex shaders require Position. Fragment uses OriginUpperLeft; a FragDepth
   output also emits DepthReplacing. No implicit early-fragment-tests mode.
-- Inputs are read-only. Outputs are write-only, assigned as whole values in Main.
+- Inputs are read-only. Outputs are write-only, assigned as whole values in Main;
+  `Inc`/`Dec` read their target and are rejected on outputs.
   Every declared output must be assigned on every reachable return/fallthrough;
   Discard paths have no output obligation. Loops conservatively cannot establish
   an output after the loop. Use local intermediates for partial updates.
@@ -55,7 +56,10 @@ fragment attachments and stage linkage remain the host's responsibility.
   Round/Floor integer results. RoundFloat follows GLSL.std.450 Round (halfway
   direction is not a cross-device bit-exact guarantee).
 - Vector constructors can combine vectors/scalars whose component counts sum
-  to the result width, evaluating arguments once in source order.
+  to the result width, evaluating arguments once in source order. Components
+  convert explicitly under the scalar typecast rules (an integer vector also
+  takes enumeration and set values); typed constants still take scalar
+  constants only.
 - `ArithmeticShiftRight` also accepts Integer vectors with 32-bit scalar/vector
   counts. Counts retain the existing width-masked semantics.
 - `CombinedTexture2D` and `CombinedTexture2DUInt` use combined-image-sampler
@@ -83,8 +87,12 @@ end;
 ```
 
 Exactly one Interlock block at Main scope, outside conditional/loop constructs.
-The block cannot return, Discard or call a function that may Discard. This
-structural restriction guarantees matched begin/end instructions, not general
+The block cannot return, Discard or call a function that may Discard. Main cannot
+`Exit` before the block, and the block must be reachable: SPIR-V requires the
+begin/end pair to run exactly once in every invocation that returns from the
+entry point. A conditional `Discard` before the block and `Exit` after it are
+allowed, as are `Exit` statements of helper and nested routines. These
+structural restrictions guarantee matched begin/end instructions, not general
 race freedom. Fragment shader pixel interlock and fragmentStoresAndAtomics are
 reflected as required features, with `VK_EXT_fragment_shader_interlock` as a
 required device extension even on Vulkan 1.2. The host must enable them and
@@ -96,7 +104,14 @@ No precision weakening or emulation of absent device features is implied.
 
 `scripts/test.ps1` validates positive and negative graphics fixtures and reflects
 their actual interface/device contracts. `python tests/vulkan_graphics.py` runs
-native vertex/fragment pipelines, fine derivatives, helper Discard, mixed-vector
-construction and combined float/unsigned texture fetch on the GPU at O0/O1.
-The latter uses only Python's standard library and the Vulkan loader; it is test
+native vertex/fragment pipelines on the GPU at O0/O1: VertexIndex/InstanceIndex,
+Flat integer varyings, smooth versus NoPerspective interpolation with a varying
+clip-space w, FragCoord, FrontFacing for both windings, DdxFine and DdyFine with
+different expected values, Discard in helpers, loops and nested routines,
+mixed-vector construction, and texel fetch/size/sampling over every texel of
+combined float/unsigned and separate textures. `python tests/audit_vector_ops.py`
+compares random constructor, vector-shift and RoundFloat/FloorFloat programs with
+a Python model. Not executed on a GPU: Interlock, FragDepth, PointSize and
+integer fragment outputs (SPIR-V validation only).
+The scripts use only Python's standard library and the Vulkan loader; they are test
 infrastructure, not an application runtime or a replacement shader compiler.

@@ -116,6 +116,76 @@ var
       Statement(C, InInterlock);
   end;
 
+  // False when control cannot continue after S: every path returns or discards.
+  function FallsThrough(S: TStatement): Boolean;
+  var
+    C: TStatement;
+  begin
+    Result := True;
+    if S = nil then
+      Exit;
+    case S.Kind of
+      skReturn, skDiscard:
+        Result := False;
+      skBlock:
+        for C in S.Children do
+          if not FallsThrough(C) then
+            Exit(False);
+      skInterlock:
+        Result := FallsThrough(S.Body);
+      skIf:
+        Result := FallsThrough(S.ThenPart) or FallsThrough(S.ElsePart);
+      skCase:
+        begin
+          Result := FallsThrough(S.ElsePart);
+          for C in S.Children do
+            Result := Result or FallsThrough(C);
+        end;
+    end;
+  end;
+
+  procedure NoExitBeforeInterlock(S: TStatement);
+  var
+    C: TStatement;
+  begin
+    if S = nil then
+      Exit;
+    if S.Kind = skReturn then
+      raise EShaderError.Create(S.Position, 'Main cannot Exit before its Interlock block');
+    NoExitBeforeInterlock(S.ThenPart);
+    NoExitBeforeInterlock(S.ElsePart);
+    NoExitBeforeInterlock(S.Body);
+    for C in S.Children do
+      NoExitBeforeInterlock(C);
+  end;
+
+  // The begin/end pair must run exactly once in every invocation that returns
+  // from Main. S is a block of Main scope; the statements before the Interlock
+  // block must neither return nor make it unreachable. A conditional Discard
+  // before the block is allowed: that invocation ends without the pair.
+  function FindInterlock(S: TStatement): Boolean;
+  var
+    C: TStatement;
+  begin
+    for C in S.Children do
+    begin
+      if C.Kind = skInterlock then
+        Exit(True);
+      if C.Kind = skBlock then
+      begin
+        if FindInterlock(C) then
+          Exit(True);
+      end
+      else
+      begin
+        NoExitBeforeInterlock(C);
+        if not FallsThrough(C) then
+          raise EShaderError.Create(C.Position, 'The Interlock block is unreachable after this statement');
+      end;
+    end;
+    Result := False;
+  end;
+
   procedure RequireOutputs(const State: TArray<Boolean>);
   var
     I: Integer;
@@ -254,6 +324,8 @@ begin
       Fail('Vertex shaders require a Position output');
     for F in AModule.Functions do
       Statement(F.Body, False);
+    if AModule.UsesInterlock then
+      FindInterlock(AModule.EntryPoint.Body);
     SetLength(State, Outputs.Count);
     if Assignments(AModule.EntryPoint.Body, State) then
       RequireOutputs(State);

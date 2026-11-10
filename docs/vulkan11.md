@@ -1,6 +1,7 @@
 # Vulkan 1.1 extended profile
 
-`[Vulkan11]` on `procedure Main` selects `compute-vulkan1.1`, emitting SPIR-V 1.3.
+`[Vulkan11]` on `procedure Main` selects the `<stage>-vulkan1.1` profile
+(`compute-vulkan1.1` unless `[Vertex]` or `[Fragment]` is given), emitting SPIR-V 1.3.
 It exposes the same bounded extended scalar and local-reference language as
 `[Vulkan12]`; it does not replace arithmetic with approximations or software
 emulation. The generated instruction stream is the same for equivalent source.

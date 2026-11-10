@@ -1928,6 +1928,8 @@ begin
         while Base.Kind in [ekField, ekIndex, ekComponent] do Base := Base.Left;
         if (Base.Kind = ekBufferElement) and (Base.Variable.Access = baWriteOnly) then
           raise EShaderError.Create(Result.Target.Position, 'Inc/Dec/Include/Exclude read the variable: cannot use a WriteOnly buffer');
+        if (Base.Kind = ekLocal) and (Base.Variable.Kind = vkOutput) then
+          raise EShaderError.Create(Result.Target.Position, 'Inc/Dec/Include/Exclude read the variable: stage outputs are write-only');
         if Result.Operation in [opOr, opAnd] then
         begin
           if Result.Target.DataType <> stSet then
@@ -3059,7 +3061,9 @@ begin
       Components := 0;
       for I := 0 to Count - 1 do
       begin
-        if (Count > 1) and not IsNumericType(Arguments[I].DataType) then
+        // Enumerations and sets convert explicitly, as in a scalar typecast.
+        if (Count > 1) and not IsNumericType(Arguments[I].DataType) and
+          not (Arguments[I].DataType in [stEnum, stSet]) then
           Fail('Vector constructors require numeric components');
         Inc(Components, ComponentCount(Arguments[I].DataType));
       end;
@@ -4431,7 +4435,7 @@ begin
   ParseLibraries;
   Next;
   if IsWord('uses') or IsWord('module') then
-    Fail('Modules require file compilation; use TShaderCompiler.CompileFile');
+    Fail('Modules require file compilation or supplied texts; use TShaderCompiler.CompileFile or CompileText');
   while IsWord('type') or IsWord('const') do
     if IsWord('type') then ParseTypes else ParseConstants;
   Attributes := Default(TAttributes);
