@@ -1,4 +1,4 @@
-unit PTS.FileSafety;
+﻿unit PTS.FileSafety;
 
 {$BOOLEVAL OFF}
 
@@ -69,7 +69,11 @@ begin
 end;
 
 function CanonicalFilePath(const APath: string): string;
-var Full, Current, Parent, Tail, Resolved: string;
+var
+  Full: string;
+  {$IFDEF MSWINDOWS}
+  Current, Parent, Tail, Resolved: string;
+  {$ENDIF}
 begin
   if APath = '' then Exit('');
   Full := TPath.GetFullPath(APath);
