@@ -57,6 +57,8 @@ Boolean в ресурсах запрещён рекурсивно. Atomics ос�
 |---|---|
 | `SingleToBits(Single)` / `BitsToSingle(Cardinal)` | Побитовая интерпретация 32 бит |
 | `DoubleToBits(Double)` / `BitsToDouble(UInt64)` | Побитовая интерпретация 64 бит |
+| `Log2(X)` | Логарифм по основанию 2 для скаляра или вектора Single |
+| `Fma(A, B, C)` | Явное fused multiply-add. Все три аргумента одного типа: Single-скаляр, Single-вектор или Double-скаляр |
 | `RoundEven(X)` | Тот же Single/Double, nearest-even |
 | `Round(X)` / `Trunc(X)` | Int64, nearest-even / toward zero |
 | `Floor(X)` / `Ceil(X)` | Integer, округление вниз / вверх |
@@ -70,6 +72,9 @@ NaN, infinity и выход за диапазон дают `Low(Int64)` / `Low(I
 определённый контракт intrinsics; обычный float→integer cast вне диапазона всё ещё
 не имеет гарантии. `FindMSB` отрицательного Integer ищет старший бит, отличный
 от знакового, как SPIR-V FindSMsb. Bitcasts не выполняют numeric conversion.
+
+`Log2` и `Fma` исполняются на GPU через GLSL.std.450, не в константных выражениях.
+`A * B + C` по-прежнему компилируется в отдельные операции с `NoContraction`.
 
 ### StrictFloat — не универсальная CPU/GPU эквивалентность
 
@@ -121,7 +126,8 @@ end;
   shared, images, textures/samplers и invocation built-ins. ReadOnly/WriteOnly
   сохраняются. Модули остаются declaration-only, без неявного импорта ресурсов
   consuming shader; root helpers объявляются после ресурсов.
-- Atomics/barriers остаются Main-only. Workgroup Barrier нельзя помещать внутрь
+- Atomics доступны также helper routines с видимыми ReadWrite buffers/shared.
+  Barriers остаются Main-only. Workgroup Barrier нельзя помещать внутрь
   if/loop/case. Main, использующий workgroup Barrier, не может содержать Exit.
 
 ## Управление потоком и таблицы

@@ -89,6 +89,12 @@ begin
     Required := TJSONArray.Create; Root.AddPair('required_features', Required);
     if (stInt64 in AModule.UsedTypes) or (stUInt64 in AModule.UsedTypes) then Required.Add('shaderInt64');
     if stDouble in AModule.UsedTypes then Required.Add('shaderFloat64');
+    for Variable in AModule.Resources do
+      if (Variable.Kind = vkOutput) and Variable.HasSourceIndex and (Variable.SourceIndex = 1) then
+      begin
+        Required.Add('dualSrcBlend');
+        Break;
+      end;
     if stByte in AModule.UsedTypes then
     begin
       Required.Add('shaderInt8');
@@ -147,6 +153,8 @@ begin
       Outputs := TJSONArray.Create;
       Root.AddPair('outputs', Outputs);
       Root.AddPair('pixel_interlock_ordered', TJSONBool.Create(AModule.PixelInterlock));
+      if AModule.EarlyFragmentTests then
+        Root.AddPair('early_fragment_tests', TJSONBool.Create(True));
       for Variable in AModule.Resources do
         if (Variable.Kind in [vkImage, vkBuffer]) and (Variable.Access <> baReadOnly) then
         begin
@@ -242,6 +250,8 @@ begin
         else
         begin
           Item.AddPair('location', TJSONNumber.Create(Variable.Location));
+          if Variable.HasSourceIndex then
+            Item.AddPair('index', TJSONNumber.Create(Variable.SourceIndex));
           case Variable.Interpolation of
             ipFlat:
               AccessName := 'flat';

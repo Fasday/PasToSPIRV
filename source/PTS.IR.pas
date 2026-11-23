@@ -36,7 +36,8 @@ type
     ParameterMode: TParameterMode;
     ImageFormat: TImageFormat;
     CombinedSampler, Coherent: Boolean;
-    Location: Cardinal;
+    Location, SourceIndex: Cardinal;
+    HasSourceIndex: Boolean;
     GraphicsBuiltin: TGraphicsBuiltin;
     Interpolation: TInterpolation;
     // Locals/parameters/Result: the declaring function (non-owning).
@@ -58,7 +59,7 @@ type
     ekInSet,        // Left in [Arguments]: values or ekRange items, Left evaluated once
     ekRange,        // Left..Right inside ekInSet
     ekTexelFetch, ekTextureSize);
-  TAtomicKind = (akAdd, akExchange, akCompareExchange);
+  TAtomicKind = (akAdd, akExchange, akCompareExchange, akAnd, akOr);
   TBarrierKind = (bkWorkgroup, bkBuffer, bkImage);
   TIntrinsic = (inMin, inMax, inAbs, inClamp, inDot, inSqrt,
     inSingleToBits, inBitsToSingle, inDoubleToBits, inBitsToDouble,
@@ -66,7 +67,7 @@ type
     inLdexp, inFindMSB, inFindLSB, inArithmeticShiftRight,
     inOrd,   // Ord(Boolean) -> Integer 0/1
     inSqr,   // Sqr(X) = X * X with X evaluated once
-    inRoundFloat, inFloorFloat, inDdxFine, inDdyFine);
+    inRoundFloat, inFloorFloat, inDdxFine, inDdyFine, inLog2, inFma);
   TOperator = (opNone, opNegate, opNot, opAdd, opSubtract, opMultiply,
     opDivide, opIntDivide, opModulo, opEqual, opNotEqual, opLess,
     opLessEqual, opGreater, opGreaterEqual, opAnd, opOr, opXor,
@@ -162,6 +163,7 @@ type
     EntryPointName: string; // External SPIR-V name; the source procedure remains Main.
     Stage: TShaderStage;
     PixelInterlock, UsesInterlock, HasLocalSize: Boolean;
+    EarlyFragmentTests: Boolean;
     UsesDerivatives: Boolean;
     LocalSize: array[0..2] of Cardinal;
     SharedBytes: Cardinal;

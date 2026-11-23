@@ -22,6 +22,10 @@
 - New reserved names of 1.4.0, now documented: Discard, Interlock, TexelFetch, TextureSize,
   CombinedTexture2D, CombinedTexture2DUInt, RoundFloat, FloorFloat, DdxFine, DdyFine.
   Reflection `language_version` is 1.4.
+- Fragment outputs support `Index(0/1)` for dual-source blending, with reflected device
+  requirements. `EarlyFragmentTests` is an explicit, separate fragment execution mode.
+- Add `Log2` and explicit `Fma` without contracting ordinary arithmetic, and `AtomicAnd`
+  and `AtomicOr` on 32-bit resources. Atomics are also available in helper routines.
 - Tests: tests/FloatStateCheck.dpr and tests/audit141.ps1 (host state, other-host builds,
   Win32/Win64 equivalence), tests/audit_vector_ops.py, stage interfaces and whole-texture
   fetch in tests/vulkan_graphics.py. `scripts/build.ps1 -Target/-CompilerName` builds for

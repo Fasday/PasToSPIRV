@@ -20,6 +20,7 @@ Test-Success 's13_overload_nested' 'procedure Main; var S: Integer; procedure Ad
 Test-Success 's13_nested_in_function' 'function F(X: Integer): Integer; var T: Integer; function Half: Integer; begin Result := X div 2; end; begin T := Half; F := T + Half; end; procedure Main; var I: Integer; begin I := F(4); end;' 'OpFunctionCall'
 Test-Success 's13_nested_outer_name' 'function F: Integer; procedure SetIt; begin F := 5; end; begin SetIt; end; procedure Main; var I: Integer; begin I := F; end;' 'OpFunctionCall'
 Test-Success 's13_nested_sibling' 'procedure Main; var A: Integer; procedure P; begin A := A + 1; end; procedure Q; begin P; P; end; begin A := 0; Q; end;' 'OpFunctionCall'
+Test-Success 's13_nested_atomic' 'var [Binding(0,0)] D: array of Cardinal; procedure Main; procedure P; var C: Cardinal; begin C := AtomicAdd(D[0], 1); end; begin P; end;' 'OpAtomicIAdd'
 Test-Success 's13_directive_names' 'procedure Main; var Forward, Overload: Integer; begin Forward := 1; Overload := Forward; end;' 'OpStore'
 
 $syntax13Failures = @(
@@ -91,7 +92,7 @@ $syntax13Failures = @(
     @('s13_nested_recursion', 'procedure Main; procedure P; begin Main; end; begin P; end;', 'Main cannot be called'),
     @('s13_nested_outer_recursion', 'procedure Outer; procedure P; begin Outer; end; begin P; end; procedure Main; begin Outer; end;', 'Recursion is not supported'),
     @('s13_nested_forward', 'procedure Main; procedure P; forward; begin end;', 'cannot be forward-declared'),
-    @('s13_nested_atomic', 'var [Binding(0,0)] D: array of Cardinal; procedure Main; procedure P; var C: Cardinal; begin C := AtomicAdd(D[0], 1); end; begin P; end;', 'only available in Main')
+    @('s13_nested_atomic_uninit_index', 'var [Binding(0,0)] D: array of Cardinal; procedure Main; var I: Integer; procedure P; begin AtomicAdd(D[I], 1); end; begin P; I := 0; end;', 'reads "I", which may be uninitialized')
 )
 foreach ($n in $syntax13Failures) { Test-Failure $n[0] $n[1] $n[2] }
 

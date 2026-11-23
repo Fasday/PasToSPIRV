@@ -23,7 +23,8 @@ end;
 ## Interfaces
 
 - Exactly one `Input`/`Output` and one `Location(N)`/`Builtin(Name)` per interface
-  variable. Locations are 0..31; duplicate locations within a direction fail.
+  variable. Locations are 0..31; duplicate locations within a direction fail,
+  except for fragment outputs with different source indices.
 - Locations hold 32-bit Integer/Cardinal/Single scalars or vectors. No records,
   arrays, Boolean or small/64-bit interface types in this bounded implementation.
 - `Flat` and `NoPerspective` belong on vertex outputs or fragment inputs.
@@ -45,6 +46,24 @@ Reflection v2 reports the actual stage/profile, input/output locations, built-in
 and interpolation. Graphics `local_size` is empty. Host bindings generation does
 not misclassify stage interfaces as push constants. Pipeline vertex formats,
 fragment attachments and stage linkage remain the host's responsibility.
+
+## Fragment output indices and early tests
+
+`[Output, Location(N), Index(0)]` and `Index(1)` select the two sources of
+dual-source blending. Index is optional (implicitly zero), limited to 0 or 1,
+and valid only on fragment outputs with a Location. Duplicate location/index
+pairs are rejected, including an explicit zero versus an omitted Index.
+An `Index(1)` output reflects the required device feature `dualSrcBlend`; the
+host must enable it and respect `maxFragmentDualSrcAttachments`. Reflection
+includes `index` for explicitly indexed outputs. Existing interfaces retain
+their previous SPIR-V and reflection when the attribute is absent.
+
+`[Fragment, EarlyFragmentTests]` explicitly requests early depth/stencil tests
+and reflects `early_fragment_tests: true`. It is rejected on resources, helpers,
+vertex and compute entry points. This is opt-in Vulkan behavior: fragment depth
+is ignored for these early tests, and depth/stencil changes can precede a later
+Discard. The host's depth/stencil state and image side effects must account for
+that ordering. PixelInterlockOrdered does not enable early tests implicitly.
 
 ## Operations and textures
 
@@ -111,7 +130,9 @@ different expected values, Discard in helpers, loops and nested routines,
 mixed-vector construction, and texel fetch/size/sampling over every texel of
 combined float/unsigned and separate textures. `python tests/audit_vector_ops.py`
 compares random constructor, vector-shift and RoundFloat/FloorFloat programs with
-a Python model. Not executed on a GPU: Interlock, FragDepth, PointSize and
-integer fragment outputs (SPIR-V validation only).
+a Python model. The compiler suite also validates dual-source decorations,
+early fragment tests and their combination with interlock, including reflection
+and invalid attribute placements. The standalone GPU suite does not execute
+these modes, Interlock, FragDepth, PointSize or integer fragment outputs.
 The scripts use only Python's standard library and the Vulkan loader; they are test
 infrastructure, not an application runtime or a replacement shader compiler.

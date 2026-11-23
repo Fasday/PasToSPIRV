@@ -285,12 +285,16 @@ begin
       Fail('PixelInterlockOrdered requires exactly one Interlock block in Main');
     if AModule.PixelInterlock and (AModule.Stage <> ssFragment) then
       Fail('PixelInterlockOrdered requires a fragment stage');
+    if AModule.EarlyFragmentTests and (AModule.Stage <> ssFragment) then
+      Fail('EarlyFragmentTests requires a fragment stage');
     HasPosition := False;
     for V in AModule.Resources do
       if V.Kind in [vkInput, vkOutput] then
       begin
         if AModule.Stage = ssCompute then
           Fail('Stage interfaces require Vertex or Fragment');
+        if V.HasSourceIndex and ((AModule.Stage <> ssFragment) or (V.Kind <> vkOutput)) then
+          Fail('Index is only valid on fragment outputs');
         if V.Kind = vkOutput then
           Outputs.Add(V);
         if V.GraphicsBuiltin <> gbNone then

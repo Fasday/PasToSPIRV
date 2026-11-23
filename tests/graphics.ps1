@@ -1,7 +1,7 @@
 # Loaded by scripts/test.ps1; compiler and validator are test-only tools.
 foreach ($name in @('graphics_vertex', 'graphics_fragment', 'combined_texture',
     'combined_sample', 'graphics_vector_math', 'graphics_interface_vertex',
-    'graphics_interface_fragment', 'combined_fetch')) {
+    'graphics_interface_fragment', 'combined_fetch', 'graphics_dual_source')) {
     $source = [IO.File]::ReadAllText((Join-Path $root "tests\fixtures\$name.pasm"))
     Test-Success $name $source
 }
@@ -9,26 +9,49 @@ Test-Success 'mixed_vector_constructor' 'procedure Main; var A: Single4; begin A
 Test-Success 'vector_arithmetic_shift' 'procedure Main; var A: Integer3; begin A := ArithmeticShiftRight(Integer3(-16,-8,-4),2); end;' 'OpShiftRightArithmetic'
 
 foreach ($profile in @('Vulkan11', 'Vulkan12')) {
-    $name = "graphics_interlock_$profile"
     $source = [IO.File]::ReadAllText((Join-Path $root 'tests\fixtures\graphics_interlock.pasm')).Replace('Vulkan11', $profile)
-    $input = Join-Path $cases "$name.pasm"
-    $output = Join-Path $cases "$name.spv"
-    [IO.File]::WriteAllText($input, $source, $utf8)
-    $result = Invoke-Tool $compiler @('compile', $input, '-o', $output)
-    Assert-True ($result.Code -eq 0) "$name failed: $($result.Err)"
-    $envName = 'vulkan1.1'
-    if ($profile -eq 'Vulkan12') { $envName = 'vulkan1.2' }
-    $validation = Invoke-Tool $SpirvVal @('--target-env', $envName, $output)
-    Assert-True ($validation.Code -eq 0) "$name validation failed: $($validation.Err)"
-    $json = Get-Content ([IO.Path]::ChangeExtension($output, '.json')) -Raw | ConvertFrom-Json
-    Assert-True ($json.stage -eq 'fragment' -and $json.pixel_interlock_ordered) 'Interlock stage reflection'
-    Assert-True ($json.required_features -contains 'fragmentShaderPixelInterlock') 'Missing interlock feature'
-    Assert-True ($json.required_device_extensions -contains 'VK_EXT_fragment_shader_interlock') 'Missing interlock device extension'
-    Assert-True ($json.images[0].coherent) 'Missing coherent image metadata'
-    $assembly = Invoke-Tool $SpirvDis @($output)
-    Assert-True ($assembly.Out -match 'OpBeginInvocationInterlockEXT' -and $assembly.Out -match 'OpEndInvocationInterlockEXT') 'Missing interlock instructions'
-    $script:checks++
+    foreach ($early in @($false, $true)) {
+        $name = "graphics_interlock_$profile"
+        $text = $source
+        if ($early) {
+            $name += '_early'
+            $text = $source.Replace('PixelInterlockOrdered', 'PixelInterlockOrdered, EarlyFragmentTests')
+        }
+        $input = Join-Path $cases "$name.pasm"
+        $output = Join-Path $cases "$name.spv"
+        [IO.File]::WriteAllText($input, $text, $utf8)
+        $result = Invoke-Tool $compiler @('compile', $input, '-o', $output)
+        Assert-True ($result.Code -eq 0) "$name failed: $($result.Err)"
+        $envName = 'vulkan1.1'
+        if ($profile -eq 'Vulkan12') { $envName = 'vulkan1.2' }
+        $validation = Invoke-Tool $SpirvVal @('--target-env', $envName, $output)
+        Assert-True ($validation.Code -eq 0) "$name validation failed: $($validation.Err)"
+        $json = Get-Content ([IO.Path]::ChangeExtension($output, '.json')) -Raw | ConvertFrom-Json
+        Assert-True ($json.stage -eq 'fragment' -and $json.pixel_interlock_ordered) 'Interlock stage reflection'
+        Assert-True ($json.required_features -contains 'fragmentShaderPixelInterlock') 'Missing interlock feature'
+        Assert-True ($json.required_device_extensions -contains 'VK_EXT_fragment_shader_interlock') 'Missing interlock device extension'
+        Assert-True ($json.images[0].coherent) 'Missing coherent image metadata'
+        Assert-True (($json.early_fragment_tests -eq $true) -eq $early) 'Incorrect early fragment tests reflection'
+        $assembly = Invoke-Tool $SpirvDis @($output)
+        Assert-True ($assembly.Out -match 'OpBeginInvocationInterlockEXT' -and $assembly.Out -match 'OpEndInvocationInterlockEXT') 'Missing interlock instructions'
+        Assert-True (($assembly.Out -match 'OpExecutionMode\s+%\S+\s+EarlyFragmentTests\b') -eq $early) 'Incorrect early fragment tests mode'
+        $script:checks++
+    }
 }
+
+$dualSource = Get-Content (Join-Path $cases 'graphics_dual_source.json') -Raw | ConvertFrom-Json
+Assert-True ($dualSource.required_features -contains 'dualSrcBlend') 'Missing dual-source blend feature'
+Assert-True ($dualSource.early_fragment_tests -and ($dualSource.outputs.index -join ',') -eq '0,1' -and
+    ($dualSource.outputs.location -join ',') -eq '0,0') 'Incorrect dual-source interface reflection'
+$dualAssembly = Invoke-Tool $SpirvDis @((Join-Path $cases 'graphics_dual_source.spv'))
+Assert-True ($dualAssembly.Out -match 'OpDecorate\s+%\S+\s+Index\s+0\b' -and
+    $dualAssembly.Out -match 'OpDecorate\s+%\S+\s+Index\s+1\b' -and
+    $dualAssembly.Out -match 'OpExecutionMode\s+%\S+\s+EarlyFragmentTests\b') 'Missing dual-source decorations or early tests mode'
+$source = [IO.File]::ReadAllText((Join-Path $root 'tests\fixtures\graphics_dual_source.pasm'))
+Test-Success 'graphics_dual_source_implicit_zero' ($source.Replace(', Index(0)', '')) 'EarlyFragmentTests'
+$implicit = Get-Content (Join-Path $cases 'graphics_dual_source_implicit_zero.json') -Raw | ConvertFrom-Json
+Assert-True ($null -eq $implicit.outputs[0].index -and $implicit.outputs[1].index -eq 1) 'Implicit source index changed reflection'
+$script:checks++
 
 $vertex = Get-Content (Join-Path $cases 'graphics_vertex.json') -Raw | ConvertFrom-Json
 Assert-True ($vertex.stage -eq 'vertex' -and $vertex.inputs.Count -eq 2 -and $vertex.outputs.Count -eq 2) 'Vertex interface reflection'
@@ -53,6 +76,16 @@ foreach ($case in @(
     @('graphics_output_helper', 'var [Output,Location(0)] A: Single4; procedure SetColor; begin A := Single4(0); end; [Fragment] procedure Main; begin SetColor; end;', 'assigned in Main'),
     @('graphics_output_missing_path', 'var [Input,Builtin(FragCoord)] P: Single4; [Output,Location(0)] A: Single4; [Fragment] procedure Main; begin if P.X > 0 then A := Single4(0); end;', 'may be unwritten'),
     @('graphics_location_duplicate', 'var [Input,Location(0)] A: Single; [Input,Location(0)] B: Single; [Fragment] procedure Main; begin end;', 'Duplicate stage interface'),
+    @('graphics_index_range', 'var [Output,Location(0),Index(2)] A: Single4; [Fragment] procedure Main; begin A := Single4(0); end;', 'Index must be 0 or 1'),
+    @('graphics_index_duplicate', 'var [Output,Location(0),Index(0)] A: Single4; [Output,Location(0)] B: Single4; [Fragment] procedure Main; begin end;', 'Duplicate stage interface'),
+    @('graphics_index_input', 'var [Input,Location(0),Index(1)] A: Single4; [Fragment] procedure Main; begin end;', 'Index requires an Output with Location'),
+    @('graphics_index_builtin', 'var [Output,Builtin(FragDepth),Index(1)] D: Single; [Fragment] procedure Main; begin D := 0.0; end;', 'Index requires an Output with Location'),
+    @('graphics_index_vertex', 'var [Output,Builtin(Position)] P: Single4; [Output,Location(0),Index(1)] A: Single4; [Vertex] procedure Main; begin P := Single4(0); A := Single4(1); end;', 'Index is only valid on fragment outputs'),
+    @('graphics_early_compute', '[EarlyFragmentTests] procedure Main; begin end;', 'EarlyFragmentTests requires a fragment stage'),
+    @('graphics_early_vertex', 'var [Output,Builtin(Position)] P: Single4; [Vertex,EarlyFragmentTests] procedure Main; begin P := Single4(0); end;', 'EarlyFragmentTests requires a fragment stage'),
+    @('graphics_early_resource', 'var [Output,Location(0),EarlyFragmentTests] A: Single4; [Fragment] procedure Main; begin A := Single4(0); end;', 'Stage execution attributes belong on Main'),
+    @('graphics_early_helper', '[EarlyFragmentTests] procedure F; begin end; [Fragment] procedure Main; begin end;', 'Attributes are not supported on helper functions'),
+    @('graphics_early_duplicate', '[Fragment,EarlyFragmentTests,EarlyFragmentTests] procedure Main; begin end;', 'Duplicate EarlyFragmentTests'),
     @('graphics_integer_varying', 'var [Input,Location(0)] A: Integer; [Fragment] procedure Main; begin end;', 'require Flat'),
     @('graphics_derivative_compute', 'procedure Main; var A: Single; begin A := DdxFine(1.0); end;', 'require a fragment'),
     @('graphics_discard_compute', 'procedure Main; begin Discard; end;', 'requires a fragment'),
