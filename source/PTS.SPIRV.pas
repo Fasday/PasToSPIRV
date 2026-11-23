@@ -529,6 +529,8 @@ begin
         Emit(FAnnotations, 71, [VariableID, 11, GraphicsBuiltinDecoration(Variable.GraphicsBuiltin)])
       else
         Emit(FAnnotations, 71, [VariableID, 30, Variable.Location]);
+      if Variable.HasSourceIndex then
+        Emit(FAnnotations, 71, [VariableID, 32, Variable.SourceIndex]);
       if Variable.Interpolation = ipFlat then
         Emit(FAnnotations, 71, [VariableID, 14]);
       if Variable.Interpolation = ipNoPerspective then
@@ -1202,6 +1204,8 @@ begin
     case AExpression.AtomicKind of
       akAdd: Opcode := 234;
       akExchange: Opcode := 229;
+      akAnd: Opcode := 240;
+      akOr: Opcode := 241;
     else Opcode := 230;
     end;
     if AExpression.AtomicKind = akCompareExchange then
@@ -1338,7 +1342,7 @@ end;
 
 function TSPIRVWriter.EmitNumericIntrinsic(AExpression: TExpression): Cardinal;
 var
-  A, B, Rounded, LowID, HighID, Condition, C1, C2, Yes, No, Merge, Valid, Invalid: Cardinal;
+  A, B, C, Rounded, LowID, HighID, Condition, C1, C2, Yes, No, Merge, Valid, Invalid: Cardinal;
   T: TShaderType;
   Instruction: Cardinal;
   D: Double;
@@ -1349,6 +1353,14 @@ begin
   T := AExpression.Arguments[0].DataType;
   Result := NewID;
   case AExpression.Intrinsic of
+    inFma:
+      begin
+        // Only an explicit Fma call is fused; ordinary arithmetic stays separate.
+        B := EmitExpression(AExpression.Arguments[1]);
+        C := EmitExpression(AExpression.Arguments[2]);
+        Emit(FCode, 12, [FTypes[T], Result, GLSL450, 50, A, B, C]);
+        Exit;
+      end;
     inDdxFine, inDdyFine:
       begin
         if AExpression.Intrinsic = inDdxFine then
@@ -1427,6 +1439,7 @@ begin
         Emit(FCode, 249, [Merge]); EmitLabel(Merge);
         Emit(FCode, 245, [FTypes[AExpression.DataType], Result, Valid, Yes, Invalid, No]); Exit;
       end;
+    inLog2: Instruction := 30;
     inRoundEven: Instruction := 2;
     inLdexp: Instruction := 53;
     inFindMSB: if IsSignedInteger(T) then Instruction := 74 else Instruction := 75;
@@ -1827,6 +1840,8 @@ begin
     if FModule.Stage = ssFragment then
     begin
       Emit(FEntryPoints, 16, [FMainID, 7]);
+      if FModule.EarlyFragmentTests then
+        Emit(FEntryPoints, 16, [FMainID, 9]);
       for Variable in FModule.Resources do
         if Variable.GraphicsBuiltin = gbFragDepth then
           Emit(FEntryPoints, 16, [FMainID, 12]);

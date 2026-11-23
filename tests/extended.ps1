@@ -32,6 +32,7 @@ Test-Success 'case_assignment' 'procedure Main; var X: Integer; begin case Globa
 Test-Extended 'wide_for' '[Vulkan12] procedure Main; var I: Int64; N: Int64; begin N := 0; for I := 9223372036854775806 to 9223372036854775807 do N := N + 1; end;' 'OpPhi'
 Test-Extended 'small_push' 'var [PushConstant] P: record A: Byte; B: Word; C: Double; D: Int64; end; [Vulkan12] procedure Main; var D: Double; begin D := P.C; end;' 'StoragePushConstant8'
 Test-Extended 'double_sqrt_clamp' '[Vulkan12] procedure Main; var D: Double; begin D := Sqrt(4.0d); D := Clamp(D, 1.0, 3.0d); end;' 'Sqrt'
+Test-Extended 'double_fma' '[Vulkan12] procedure Main; begin var D: Double := Fma(1.25d, 2.0d, -1.0d); end;' 'Fma'
 Test-Extended 'small_arithmetic' '[Vulkan12] procedure Main; var B: Byte; W: Word; begin B := 255; B := B + 1; W := 65535; W := W + 1; end;' 'OpIAdd'
 Test-Extended 'small_case' '[Vulkan12] procedure Main; var B: Byte; begin B := 1; case B of 0: B := 2; 1: B := 3; end; end;' 'OpSwitch'
 
@@ -39,6 +40,7 @@ $negative = @(
     @('wide_literal_overflow', '[Vulkan12] procedure Main; var X: UInt64; begin X := 18446744073709551616; end;', 'exceeds 64'),
     @('double_literal_overflow', '[Vulkan12] procedure Main; var X: Double; begin X := 1e400d; end;', 'Double range'),
     @('double_narrowing', '[Vulkan12] procedure Main; var X: Single; begin X := 1.0d; end;', 'Cannot convert'),
+    @('log2_double', '[Vulkan12] procedure Main; begin var A: Double := Log2(2.0d); end;', 'Log2 requires Single'),
     @('small_literal_overflow', '[Vulkan12] procedure Main; var X: Byte; begin X := 256; end;', 'Cannot convert'),
     @('typed_const_initializer', 'const A: Integer = 1; B: Cardinal = A; procedure Main; begin end;', 'Cannot convert'),
     @('typed_cast_initializer', 'const A: UInt64 = Int64(1); [Vulkan12] procedure Main; begin end;', 'Cannot convert'),

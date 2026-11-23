@@ -9,6 +9,19 @@ $successes = @(
     @('builtin_vectors', 'procedure Main; var V: Cardinal3; I: Cardinal; begin V := WorkgroupID + NumWorkgroups + LocalInvocationID; I := LocalInvocationIndex; end;')
 )
 foreach ($case in $successes) { Test-Success $case[0] $case[1] }
+foreach ($case in @(
+    @('atomic_bitwise_helpers', @('OpAtomicAnd', 'OpAtomicOr', 'OpFunctionCall')),
+    @('fused_numeric', @('Fma', 'Log2', 'NoContraction'))
+)) {
+    $name, $instructions = $case
+    Test-Success $name ([IO.File]::ReadAllText((Join-Path $root "tests\fixtures\$name.pas")))
+    $assembly = Invoke-Tool $SpirvDis @((Join-Path $cases "$name.spv"))
+    Assert-True ($assembly.Code -eq 0) "$name failed to disassemble"
+    foreach ($instruction in $instructions) {
+        Assert-True ($assembly.Out -match "\b$instruction\b") "$name does not contain $instruction"
+    }
+    $script:checks++
+}
 $failures = @(
     @('const_undefined', 'const A = Missing + 1; procedure Main; begin end;', 'Unknown identifier'),
     @('const_div_zero', 'const A = 1 div 0; procedure Main; begin end;', 'defined scalar constant'),
@@ -22,6 +35,11 @@ $failures = @(
     @('atomic_float', 'var [Binding(0,0)] Data: array of Single; procedure Main; begin AtomicAdd(Data[0],1); end;', 'scalar Integer or Cardinal'),
     @('atomic_readonly', 'var [Binding(0,0),ReadOnly] Data: array of Cardinal; procedure Main; begin AtomicAdd(Data[0],1); end;', 'ReadOnly'),
     @('atomic_writeonly', 'var [Binding(0,0),WriteOnly] Data: array of Cardinal; procedure Main; begin AtomicAdd(Data[0],1); end;', 'ReadWrite'),
+    @('atomic_helper_readonly', 'var [Binding(0,0),ReadOnly] Data: array of Cardinal; procedure F; begin AtomicOr(Data[0],1); end; procedure Main; begin F; end;', 'ReadOnly'),
+    @('atomic_helper_local', 'procedure F; var A: Integer; begin A := 0; AtomicAnd(A,1); end; procedure Main; begin F; end;', 'ReadWrite storage buffer or shared'),
+    @('log2_integer', 'procedure Main; begin var A: Single := Log2(2); end;', 'Log2 requires Single'),
+    @('fma_integer', 'procedure Main; begin var A: Single := Fma(1,2,3); end;', 'Fma requires floating-point operands'),
+    @('fma_mixed_width', 'procedure Main; begin var A: Single2 := Fma(Single2(1.0),Single2(2.0),3.0); end;', 'Fma arguments must have the same floating-point type'),
     @('barrier_if', 'procedure Main; begin if True then Barrier; end;', 'unconditional'),
     @('barrier_while', 'procedure Main; begin while False do Barrier; end;', 'unconditional'),
     @('barrier_for', 'procedure Main; var I: Integer; begin for I := 1 to 2 do Barrier; end;', 'unconditional'),

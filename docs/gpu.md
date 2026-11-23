@@ -13,8 +13,8 @@ Byte/Word native storage, Int64/UInt64/Double и var/out; `[Vulkan11]` даёт 
 `[StrictFloat]` запрашивает
 IEEE modes; host проверяет reflection `required_features` и float-controls properties.
 `[Aliased]` обозначает перекрывающиеся storage-buffer views, не устраняя races.
-Root helpers могут обращаться к видимым ресурсам/built-ins; atomics/barriers
-сохраняют Main-only ограничения (вложенные подпрограммы Main — не Main). Перечисления
+Root helpers могут обращаться к видимым ресурсам/built-ins и выполнять атомики.
+Барьеры сохраняют Main-only ограничения (вложенные подпрограммы Main — не Main). Перечисления
 и множества в ресурсах не допускаются. Подробнее: [extended.md](extended.md).
 
 ## Атомики
@@ -23,6 +23,8 @@ Root helpers могут обращаться к видимым ресурсам/
 Previous := AtomicAdd(Counts[Index], 1);
 Previous := AtomicExchange(Values[0], 20);
 Previous := AtomicCompareExchange(Values[0], 20, 30);
+Previous := AtomicAnd(Values[0], $FFFF);
+Previous := AtomicOr(Values[0], $80000000);
 ```
 
 - Только скалярные `Integer`/`Cardinal`, адресуемые в ReadWrite storage buffer
@@ -30,7 +32,8 @@ Previous := AtomicCompareExchange(Values[0], 20, 30);
 - Возвращается **старое** значение. CompareExchange принимает `(Target, Compare, NewValue)`.
   При несовпадении target не меняется; возвращается фактическое старое значение.
 - Вызов можно использовать отдельно, отбросив результат. Операции доступны только
-  из `Main`; value-функции не получают скрытый доступ к ресурсам.
+  из `Main` и helper routines, обращающихся к видимым ресурсам. Constant expressions
+  и локальные/параметрические targets вместо storage/shared запрещены.
 - Память: **relaxed**, Device scope для SSBO, Workgroup scope для shared.
   Атомарность не равна публикации/упорядочиванию других данных. Нет float/64-bit atomics.
 - ReadOnly/WriteOnly не годятся для RMW. Обычное сложение не превращается в atomic автоматически.

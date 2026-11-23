@@ -511,8 +511,11 @@ end;
 ## Операторы и ограничения
 
 Атомики, shared memory, барьеры, storage images и Texture2D/Sampler описаны
-в [gpu.md](gpu.md). Операции над такими ресурсами остаются в `Main`,
-пользовательские value-функции не получают скрытого доступа к ним.
+в [gpu.md](gpu.md). Helpers могут обращаться к видимым ресурсам и атомикам;
+барьеры остаются в `Main`. Модули не получают неявных ресурсов consuming shader.
+
+`Log2` и явный `Fma` описаны в [extended.md](extended.md). Для фрагментных выходов
+`Index` и режим `EarlyFragmentTests` документированы в [graphics.md](graphics.md).
 
 Реализованы присваивания, блоки, `if/then/else`, `while/do`, `for/to/downto`.
 После `then`/`do` допустим один оператор или `begin/end`.

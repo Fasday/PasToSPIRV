@@ -82,7 +82,8 @@ if (-not $SkipDelphiTests) {
             $hostSources += Join-Path $root "examples\$name.pas"
         }
         foreach ($name in @('extended_numeric.pas', 'intrinsic_edges.pas', 'vector_edges.pas', 'syntax_group2.pas',
-            'graphics_fragment.pasm', 'combined_texture.pasm')) {
+            'graphics_fragment.pasm', 'combined_texture.pasm', 'graphics_dual_source.pasm',
+            'fused_numeric.pas', 'atomic_bitwise_helpers.pas')) {
             $hostSources += Join-Path $root "tests\fixtures\$name"
         }
         foreach ($source in $hostSources) {

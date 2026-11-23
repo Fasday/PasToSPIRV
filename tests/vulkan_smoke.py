@@ -396,6 +396,11 @@ def main(require_shared_cpu=False):
     optimized_dir.mkdir(exist_ok=True)
     const_optimized = compile_shader(root, optimized_dir, "const_namespace", "tests/fixtures", (root / "tests/fixtures/release_modules",), True)
     atomic_optimized = compile_shader(root, optimized_dir, "atomic_values", "tests/fixtures", optimize=True)
+    atomic_helpers, fused_numeric = (
+        [compile_shader(root, folder, name, "tests/fixtures", optimize=folder == optimized_dir)
+         for folder in (output, optimized_dir)]
+        for name in ("atomic_bitwise_helpers", "fused_numeric")
+    )
     cpu_reference = root / "build/bin/SharedSourceCheck.exe"
     shared_inputs = [root / "tests/SharedSourceCheck.dpr", *sorted((root / "examples/shared").glob("*.inc"))]
     cpu_ready = cpu_reference.exists() and all(path.stat().st_mtime_ns <= cpu_reference.stat().st_mtime_ns for path in shared_inputs)
@@ -600,6 +605,23 @@ def main(require_shared_cpu=False):
         result = runtime.run(atomic_optimized, {"Values": pack_ints([10,0,0,0]), "SignedValues": pack_ints([-5,0])}, b"", 1)
         if result["Values"] != pack_ints([30,10,20,30]) or result["SignedValues"] != pack_ints([-7,-5]):
             raise AssertionError('O1 changed atomic side effects')
+        for module in atomic_helpers:
+            result = runtime.run(module, {"Values": pack_ints([0x5A, 0, 0, 0, 0, 0, sentinel])}, b"", 1)
+            if result["Values"] != pack_ints([0xCB, 0x5A, 0xFA, 13, 12, 0xCA, sentinel]):
+                raise AssertionError("Helper atomics changed old values, side effects or the guarded tail")
+        eps = 2.0 ** -23
+        numeric_input = pack_floats([1.0, 2.0, 4.0, 8.0, 1.0 + eps, 1.0 - eps, -1.0, 0.0])
+        for module in fused_numeric:
+            result = runtime.run(module, {"Values": numeric_input, "Results": pack_floats([-12345.0] * 16)}, b"", 1)
+            actual = struct.unpack("<16f", result["Results"])
+            # Rounded separately, (1 + eps) * (1 - eps) becomes 1 and the sum is zero.
+            if actual[:4] != (0.0, 2.0, 12.0, 56.0) or actual[8:10] != (-eps * eps, 0.0):
+                raise AssertionError(f"Explicit Fma or separate rounding changed: {actual}")
+            if not all(math.isclose(value, expected, abs_tol=1e-6)
+                       for value, expected in zip((*actual[4:8], actual[10]), (0.0, 1.0, 2.0, 3.0, 3.0))):
+                raise AssertionError(f"Scalar/vector Log2 differs: {actual}")
+            if result["Values"] != numeric_input or actual[12:] != (-12345.0,) * 4:
+                raise AssertionError("Fma/Log2 wrote to the input or the guarded tail")
         # Second audit: Workgroup twin types, typed constants and selector order.
         audit_dir = output / 'audit2'
         audit_dir.mkdir(exist_ok=True)

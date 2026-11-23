@@ -31,8 +31,9 @@ type
     HasAliased: Boolean;
     HasStage, HasInput, HasOutput, HasLocation, HasBuiltin: Boolean;
     HasInterpolation, HasCoherent, HasInterlock: Boolean;
+    HasSourceIndex, HasEarlyFragmentTests: Boolean;
     Stage: TShaderStage;
-    Location: Cardinal;
+    Location, SourceIndex: Cardinal;
     GraphicsBuiltin: TGraphicsBuiltin;
     Interpolation: TInterpolation;
     LocalSize: array[0..2] of Cardinal;
@@ -181,7 +182,7 @@ const
     'SingleToBits', 'BitsToSingle', 'DoubleToBits', 'BitsToDouble',
     'RoundEven', 'Round', 'Trunc', 'Floor', 'Ceil', 'IsNan', 'IsInfinite',
     'Ldexp', 'FindMSB', 'FindLSB', 'ArithmeticShiftRight', 'Ord', 'Sqr',
-    'RoundFloat', 'FloorFloat', 'DdxFine', 'DdyFine');
+    'RoundFloat', 'FloorFloat', 'DdxFine', 'DdyFine', 'Log2', 'Fma');
 var
   Candidate: TIntrinsic;
 begin
@@ -1095,6 +1096,23 @@ begin
           Fail('Locations are limited to 0..31');
         Expect(tkRightParen, '")"');
       end
+      else if Name = 'index' then
+      begin
+        if Result.HasSourceIndex then
+          Fail('Duplicate Index attribute');
+        Result.HasSourceIndex := True;
+        Expect(tkLeftParen, '"("');
+        Result.SourceIndex := ReadUInt;
+        if Result.SourceIndex > 1 then
+          Fail('Fragment output Index must be 0 or 1');
+        Expect(tkRightParen, '")"');
+      end
+      else if Name = 'earlyfragmenttests' then
+      begin
+        if Result.HasEarlyFragmentTests then
+          Fail('Duplicate EarlyFragmentTests attribute');
+        Result.HasEarlyFragmentTests := True;
+      end
       else if Name = 'builtin' then
       begin
         if Result.HasBuiltin then
@@ -1166,8 +1184,10 @@ begin
     Fail(Format('Shader resources are limited to %d', [MaxResources]));
   if AAttributes.HasLocalSize then
     Fail('LocalSize is only valid on procedure Main');
-  if AAttributes.HasStage or AAttributes.HasInterlock then
-    Fail('Stage and PixelInterlockOrdered attributes belong on Main');
+  if AAttributes.HasStage or AAttributes.HasInterlock or AAttributes.HasEarlyFragmentTests then
+    Fail('Stage execution attributes belong on Main');
+  if AAttributes.HasSourceIndex and not (AAttributes.HasOutput and AAttributes.HasLocation) then
+    Fail('Index requires an Output with Location');
   if (AAttributes.HasLocation or AAttributes.HasBuiltin or AAttributes.HasInterpolation) and
     not (AAttributes.HasInput or AAttributes.HasOutput) then
     Fail('Location, Builtin and interpolation require Input or Output');
@@ -1202,6 +1222,8 @@ begin
   begin
     Variable.DataType := ReadType(Variable.Composite);
     Variable.Location := AAttributes.Location;
+    Variable.SourceIndex := AAttributes.SourceIndex;
+    Variable.HasSourceIndex := AAttributes.HasSourceIndex;
     Variable.GraphicsBuiltin := AAttributes.GraphicsBuiltin;
     Variable.Interpolation := AAttributes.Interpolation;
     if AAttributes.HasBuiltin then
@@ -1216,7 +1238,8 @@ begin
     for Other in FModule.Resources do
       if (Other <> Variable) and (Other.Kind = Variable.Kind) and
         (((Variable.GraphicsBuiltin <> gbNone) and (Variable.GraphicsBuiltin = Other.GraphicsBuiltin)) or
-         ((Variable.GraphicsBuiltin = gbNone) and (Other.GraphicsBuiltin = gbNone) and (Variable.Location = Other.Location))) then
+         ((Variable.GraphicsBuiltin = gbNone) and (Other.GraphicsBuiltin = gbNone) and
+           (Variable.Location = Other.Location) and (Variable.SourceIndex = Other.SourceIndex))) then
         Fail('Duplicate stage interface location or built-in');
     Expect(tkSemicolon, '";"');
     Exit;
@@ -1426,7 +1449,7 @@ begin
     if AAttributes.HasBinding or AAttributes.HasAccess or AAttributes.HasPushConstant or AAttributes.HasShared or AAttributes.HasAliased then
       Fail('Only LocalSize is valid on procedure Main');
     if AAttributes.HasInput or AAttributes.HasOutput or AAttributes.HasLocation or
-      AAttributes.HasBuiltin or AAttributes.HasInterpolation or AAttributes.HasCoherent then
+      AAttributes.HasBuiltin or AAttributes.HasInterpolation or AAttributes.HasCoherent or AAttributes.HasSourceIndex then
       Fail('Interface and resource attributes cannot be applied to Main');
     ExpectWord('procedure');
     Name := FToken;
@@ -1437,6 +1460,7 @@ begin
     FModule.StrictFloat := AAttributes.HasStrictFloat;
     FModule.Stage := AAttributes.Stage;
     FModule.PixelInterlock := AAttributes.HasInterlock;
+    FModule.EarlyFragmentTests := AAttributes.HasEarlyFragmentTests;
     FModule.HasLocalSize := AAttributes.HasLocalSize;
     if AAttributes.HasLocalSize then
       for I := 0 to 2 do
@@ -2004,7 +2028,8 @@ begin
         if IsWord('Break') then Result.Kind := skBreak else Result.Kind := skContinue;
         Next;
       end
-      else if IsWord('AtomicAdd') or IsWord('AtomicExchange') or IsWord('AtomicCompareExchange') then
+      else if IsWord('AtomicAdd') or IsWord('AtomicExchange') or IsWord('AtomicCompareExchange') or
+        IsWord('AtomicAnd') or IsWord('AtomicOr') then
       begin
         Result.Kind := skEvaluate; Result.Value := ParseAtomic;
       end
@@ -3227,7 +3252,12 @@ begin
   Result.Kind := ekIntrinsic; Result.Intrinsic := AIntrinsic; Result.Position := FToken.Position;
   try
     Next; Expect(tkLeftParen, '"("');
-    if AIntrinsic in [inLdexp, inArithmeticShiftRight] then Count := 2 else Count := 1;
+    if AIntrinsic = inFma then
+      Count := 3
+    else if AIntrinsic in [inLdexp, inArithmeticShiftRight] then
+      Count := 2
+    else
+      Count := 1;
     for I := 0 to Count - 1 do
     begin
       A := ParseExpression; Result.Arguments.Add(A);
@@ -3273,6 +3303,17 @@ begin
           else if ComponentCount(Result.Arguments[1].DataType) <> ComponentCount(T) then
             Fail('Shift vector widths must agree');
         end;
+      inFma:
+        begin
+          if not IsFloatType(T) then
+            Fail('Fma requires floating-point operands');
+          for I := 1 to 2 do
+            if Result.Arguments[I].DataType <> T then
+              Fail('Fma arguments must have the same floating-point type');
+        end;
+      inLog2:
+        if ComponentType(T) <> stSingle then
+          Fail('Log2 requires Single scalars or vectors');
       inRoundFloat, inFloorFloat, inDdxFine, inDdyFine:
         if not (ComponentType(T) = stSingle) then
           Fail('Graphics floating intrinsics require Single scalars or vectors');
@@ -3627,7 +3668,9 @@ begin
     Fail('An if expression inside an operand must be parenthesized: (if C then A else B)');
   if IsWord('Low') or IsWord('High') or IsWord('Length') or IsWord('SizeOf') or
     IsWord('Odd') or IsWord('Succ') or IsWord('Pred') then Exit(ParseBuiltin);
-  if IsWord('AtomicAdd') or IsWord('AtomicExchange') or IsWord('AtomicCompareExchange') then Exit(ParseAtomic);
+  if IsWord('AtomicAdd') or IsWord('AtomicExchange') or IsWord('AtomicCompareExchange') or
+    IsWord('AtomicAnd') or IsWord('AtomicOr') then
+    Exit(ParseAtomic);
   if IsWord('ImageLoad') or IsWord('ImageSize') or IsWord('SampleLevel') or
     IsWord('TexelFetch') or IsWord('TextureSize') then Exit(ParseImageOperation);
   Owner := ReadOwnerPrefix;
@@ -3755,11 +3798,14 @@ var
   Argument: TExpression;
   Count, I: Integer;
 begin
-  if (FCurrentFunction = nil) or (FCurrentFunction <> FModule.EntryPoint) then Fail('Atomics are only available in Main');
+  if FCurrentFunction = nil then
+    Fail('Constant expressions cannot perform atomics');
   Result := TExpression.Create;
   Result.Kind := ekAtomic; Result.Position := FToken.Position;
   if IsWord('AtomicAdd') then Result.AtomicKind := akAdd
   else if IsWord('AtomicExchange') then Result.AtomicKind := akExchange
+  else if IsWord('AtomicAnd') then Result.AtomicKind := akAnd
+  else if IsWord('AtomicOr') then Result.AtomicKind := akOr
   else Result.AtomicKind := akCompareExchange;
   try
     Next; Expect(tkLeftParen, '"("');
